@@ -1,0 +1,8 @@
+interface:
+  display_name: "Impl Phase Coach"
+  short_description: "按实现阶段推进，先给关键示例，再做教练式纠偏。"
+  default_prompt: "用 $impl-phase-coach 带我按阶段推进当前实现任务：先识别当前实现阶段，再给出阶段目标、产物和退出条件。优先给关键位置示例代码，而不是一次性完整实现；只有在边界容易混淆时，再借助 6 层解释当前为什么先处理这一边。"
+
+policy:
+  allow_implicit_invocation: true
+

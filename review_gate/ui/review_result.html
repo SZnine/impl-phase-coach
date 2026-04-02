@@ -1,0 +1,48 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>复盘结果</title>
+    <script>
+      function toggleCoachReport() {
+        const button = document.getElementById("toggle-report");
+        const report = document.getElementById("coach-report");
+        const expanded = button.getAttribute("aria-expanded") === "true";
+
+        if (expanded) {
+          report.hidden = true;
+          button.setAttribute("aria-expanded", "false");
+          button.textContent = "展开完整复盘";
+          return;
+        }
+
+        report.hidden = false;
+        button.setAttribute("aria-expanded", "true");
+        button.textContent = "收起完整复盘";
+      }
+    </script>
+  </head>
+  <body>
+    <main>
+      <section id="summary-card">{{SUMMARY_CARD}}</section>
+      <div class="report-actions">
+        <button
+          id="toggle-report"
+          type="button"
+          aria-controls="coach-report"
+          aria-expanded="false"
+          onclick="toggleCoachReport()"
+        >
+          展开完整复盘
+        </button>
+      </div>
+      <section id="coach-report" hidden>
+        <h2>完整复盘报告</h2>
+        <section id="expanded-report-body">{{EXPANDED_REPORT}}</section>
+        {{FOLLOW_UP_SECTION}}
+        {{LEARNING_SECTION}}
+        {{KNOWLEDGE_SECTION}}
+      </section>
+    </main>
+  </body>
+</html>
