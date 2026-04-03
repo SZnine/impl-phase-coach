@@ -1,0 +1,529 @@
+import "@testing-library/jest-dom/vitest";
+
+import type { ReactElement } from "react";
+
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { vi } from "vitest";
+
+import {
+  ApiClientProvider,
+  type ApiClient,
+  type HomeViewDTO,
+  type KnowledgeGraphViewDTO,
+  type KnowledgeIndexViewDTO,
+  type MistakesViewDTO,
+  type ProjectViewDTO,
+  type ProposalActionResponseDTO,
+  type ProposalsViewDTO,
+  type QuestionSetViewDTO,
+  type QuestionViewDTO,
+  type StageViewDTO,
+  type SubmitAnswerResponseDTO,
+} from "./lib/api";
+import { HomePage } from "./pages/HomePage";
+import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
+import { KnowledgeIndexPage } from "./pages/KnowledgeIndexPage";
+import { MistakesPage } from "./pages/MistakesPage";
+import { ProjectPage } from "./pages/ProjectPage";
+import { ProposalsPage } from "./pages/ProposalsPage";
+import { QuestionPage } from "./pages/QuestionPage";
+import { QuestionSetPage } from "./pages/QuestionSetPage";
+import { StagePage } from "./pages/StagePage";
+
+function renderWithClient(ui: ReactElement, client: ApiClient, path: string) {
+  return render(
+    <ApiClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/" element={ui} />
+          <Route path="/projects/:projectId" element={ui} />
+          <Route path="/projects/:projectId/stages/:stageId" element={ui} />
+          <Route path="/projects/:projectId/stages/:stageId/questions/:questionSetId" element={ui} />
+          <Route path="/projects/:projectId/stages/:stageId/questions/:questionSetId/:questionId" element={ui} />
+          <Route path="/mistakes" element={ui} />
+          <Route path="/knowledge/index" element={ui} />
+          <Route path="/knowledge/graph" element={ui} />
+          <Route path="/proposals" element={ui} />
+        </Routes>
+      </MemoryRouter>
+    </ApiClientProvider>,
+  );
+}
+
+const homeView: HomeViewDTO = {
+  total_count: 1,
+  pending_proposal_count: 1,
+  active_project_id: "proj-1",
+  projects: [
+    {
+      project_id: "proj-1",
+      project_label: "impl-phase-coach",
+      project_summary: "A local review workbench that keeps project progress, review rounds, and durable learning traces aligned.",
+      active_stage_id: "stage-1",
+      active_stage_label: "module-interface-boundary",
+      pending_proposal_count: 1,
+      mistake_count: 1,
+      knowledge_entry_count: 1,
+    },
+  ],
+};
+
+const projectView: ProjectViewDTO = {
+  project_id: "proj-1",
+  project_label: "impl-phase-coach",
+  project_summary: "A local review workbench that keeps project progress, review rounds, and durable learning traces aligned.",
+  active_stage_id: "stage-1",
+  active_stage_label: "module-interface-boundary",
+  pending_proposal_count: 1,
+  mistake_count: 1,
+  knowledge_entry_count: 1,
+  stages: [
+    {
+      stage_id: "stage-1",
+      stage_label: "module-interface-boundary",
+      status: "in_progress",
+      mastery_status: "partially_verified",
+      active_question_set_id: "set-1",
+    },
+    {
+      stage_id: "stage-2",
+      stage_label: "proposal-action-loop",
+      status: "not_started",
+      mastery_status: "unverified",
+      active_question_set_id: "set-2",
+    },
+  ],
+};
+
+const stageView: StageViewDTO = {
+  project_id: "proj-1",
+  stage_id: "stage-1",
+  stage_label: "Validation stage",
+  stage_goal: "Confirm boundary handling",
+  status: "in_progress",
+  mastery_status: "unverified",
+  active_question_set_id: "set-1",
+  knowledge_summary: {
+    knowledge_entry_count: 1,
+    mistake_count: 1,
+    latest_summary: "synced partial assessment with 1 knowledge entries and 1 mistakes",
+  },
+};
+
+const mistakesView: MistakesViewDTO = {
+  project_filter: null,
+  stage_filter: null,
+  total_count: 1,
+  items: [
+    {
+      mistake_id: "proj-1:stage-1:a-1:mistake-1",
+      label: "Decision awareness",
+      mistake_type: "reasoning_gap",
+      project_id: "proj-1",
+      stage_id: "stage-1",
+      root_cause_summary: "Decision awareness",
+      avoidance_summary: "Review the stage boundary and revisit: Decision awareness",
+      status: "active",
+    },
+  ],
+};
+
+const knowledgeGraphView: KnowledgeGraphViewDTO = {
+  project_filter: null,
+  stage_filter: null,
+  total_count: 1,
+  nodes: [
+    {
+      node_id: "proj-1:stage-1:a-1:node-1",
+      label: "Decision awareness",
+      node_type: "decision",
+      project_id: "proj-1",
+      stage_id: "stage-1",
+      strength: 2,
+      linked_mistake_ids: ["proj-1:stage-1:a-1:mistake-1"],
+      summary: "Derived from partial assessment in stage-1.",
+      status: "active",
+    },
+  ],
+};
+
+const knowledgeIndexView: KnowledgeIndexViewDTO = {
+  project_filter: null,
+  stage_filter: null,
+  total_count: 1,
+  items: [
+    {
+      entry_id: "proj-1:stage-1:a-1:index-1",
+      title: "Decision awareness",
+      entry_type: "mistake_avoidance",
+      summary: "Revisit why this stage needs: Decision awareness",
+      project_id: "proj-1",
+      stage_id: "stage-1",
+      linked_mistake_ids: ["proj-1:stage-1:a-1:mistake-1"],
+    },
+  ],
+};
+
+const proposalsView: ProposalsViewDTO = {
+  total_count: 1,
+  pending_count: 1,
+  items: [
+    {
+      proposal_id: "proposal-1",
+      proposal_type: "compress_mistake_entries",
+      target_type: "mistake_entries",
+      target_count: 2,
+      status: "pending_review",
+      reason: "Compress 2 mistake_entries",
+      preview_summary: "Would compress 2 targets from mistake_entries.",
+      latest_execution_status: null,
+      latest_execution_summary: null,
+    },
+  ],
+};
+
+const proposalsViewAfterAccept: ProposalsViewDTO = {
+  total_count: 1,
+  pending_count: 0,
+  items: [
+    {
+      proposal_id: "proposal-1",
+      proposal_type: "compress_mistake_entries",
+      target_type: "mistake_entries",
+      target_count: 2,
+      status: "accepted",
+      reason: "Compress 2 mistake_entries",
+      preview_summary: "Would compress 2 targets from mistake_entries.",
+      latest_execution_status: "succeeded",
+      latest_execution_summary: "accept on proposal-1 => succeeded",
+    },
+  ],
+};
+
+const questionSetView: QuestionSetViewDTO = {
+  project_id: "proj-1",
+  stage_id: "stage-1",
+  question_set_id: "set-1",
+  question_set_title: "Stage-1 review set",
+  status: "active",
+  question_count: 2,
+  current_question_id: "q-2",
+  questions: [
+    {
+      question_id: "q-1",
+      question_level: "core",
+      prompt: "What is the core boundary here?",
+      status: "ready",
+    },
+    {
+      question_id: "q-2",
+      question_level: "why",
+      prompt: "Why is this boundary necessary?",
+      status: "ready",
+    },
+  ],
+};
+
+const questionView: QuestionViewDTO = {
+  project_id: "proj-1",
+  stage_id: "stage-1",
+  question_set_id: "set-1",
+  question_id: "q-2",
+  question_level: "why",
+  prompt: "Why is this boundary necessary?",
+  intent: "Check whether the user can explain the separation between read and write flows.",
+  answer_placeholder: "Answer in your own words",
+  allowed_actions: ["continue_answering", "deepen", "pause_review", "skip_and_continue_project"],
+  status: "ready",
+};
+
+function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
+  return {
+    baseUrl: "/api",
+    getWorkspaceSession: vi.fn().mockResolvedValue({
+      workspace_session_id: "local-workspace-session",
+      active_project_id: null,
+      active_stage_id: null,
+      active_panel: "questions",
+      active_question_set_id: null,
+      active_question_id: null,
+      active_profile_space_id: null,
+      active_proposal_center_id: null,
+      last_opened_at: "",
+      filters: {},
+    }),
+    saveWorkspaceSession: vi.fn().mockResolvedValue({
+      workspace_session_id: "local-workspace-session",
+      active_project_id: null,
+      active_stage_id: null,
+      active_panel: "questions",
+      active_question_set_id: null,
+      active_question_id: null,
+      active_profile_space_id: null,
+      active_proposal_center_id: null,
+      last_opened_at: "",
+      filters: {},
+    }),
+    getHomeView: vi.fn().mockResolvedValue(homeView),
+    getProjectView: vi.fn().mockResolvedValue(projectView),
+    getStageView: vi.fn().mockResolvedValue(stageView),
+    getMistakesView: vi.fn().mockResolvedValue(mistakesView),
+    getKnowledgeGraphView: vi.fn().mockResolvedValue(knowledgeGraphView),
+    getKnowledgeIndexView: vi.fn().mockResolvedValue(knowledgeIndexView),
+    getProposalsView: vi.fn().mockResolvedValue(proposalsView),
+    submitProposalAction: vi.fn().mockResolvedValue({
+      request_id: "proposal-1-accept",
+      success: true,
+      action_type: "accept",
+      result_type: "execution_completed",
+      message: "accept on proposal-1 => succeeded",
+      refresh_targets: ["proposals"],
+      proposal_id: "proposal-1",
+      proposal_status: "accepted",
+      execution_status: "succeeded",
+      execution_summary: "accept on proposal-1 => succeeded",
+    } satisfies ProposalActionResponseDTO),
+    getQuestionSetView: vi.fn().mockResolvedValue(questionSetView),
+    getQuestionView: vi.fn().mockResolvedValue(questionView),
+    submitAnswer: vi.fn().mockResolvedValue({
+      request_id: "req-1",
+      success: true,
+      action_type: "submit_answer",
+      result_type: "assessment_created",
+      message: "Assessment created with verdict partial.",
+      refresh_targets: ["question_detail", "stage_summary"],
+      assessment_summary: {
+        assessment_id: "assessment-req-1",
+        project_id: "proj-1",
+        stage_id: "stage-1",
+        question_set_id: "set-1",
+        question_id: "q-2",
+        answer_excerpt: "Need review",
+        status: "created",
+      },
+    } satisfies SubmitAnswerResponseDTO),
+    ...overrides,
+  };
+}
+
+test("HomePage renders loaded project summaries and not the static placeholder", async () => {
+  renderWithClient(<HomePage />, createClient(), "/");
+
+  expect(screen.getByText("Loading home view...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+  expect(screen.getByText("impl-phase-coach")).toBeInTheDocument();
+  expect(screen.getByText("module-interface-boundary")).toBeInTheDocument();
+  expect(screen.getAllByText("Pending proposals")[0].parentElement).toHaveTextContent("1");
+  expect(screen.getByRole("link", { name: "Open project" })).toHaveAttribute("href", "/projects/proj-1");
+  expect(screen.queryByText("Open the frozen project shell and inspect its stage list.")).not.toBeInTheDocument();
+});
+
+test("ProjectPage renders loaded project summary and stage list", async () => {
+  renderWithClient(<ProjectPage />, createClient(), "/projects/proj-1");
+
+  expect(screen.getByText("Loading project view...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Project: impl-phase-coach" })).toBeInTheDocument();
+  expect(screen.getByText("A local review workbench that keeps project progress, review rounds, and durable learning traces aligned.")).toBeInTheDocument();
+  expect(screen.getAllByText("module-interface-boundary").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getByText("proposal-action-loop")).toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "Open stage" })[0]).toHaveAttribute("href", "/projects/proj-1/stages/stage-1");
+  expect(screen.queryByText("This page stays on the project boundary and exposes the next stage boundary.")).not.toBeInTheDocument();
+});
+
+test("StagePage renders loaded stage data and not the static placeholder", async () => {
+  renderWithClient(<StagePage />, createClient(), "/projects/proj-1/stages/stage-1");
+
+  expect(screen.getByText("Loading stage view...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Stage: Validation stage" })).toBeInTheDocument();
+  expect(screen.getByText("Confirm boundary handling")).toBeInTheDocument();
+  expect(screen.getByText("in_progress")).toBeInTheDocument();
+  expect(screen.getByText("unverified")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Knowledge summary" })).toBeInTheDocument();
+  expect(screen.getByText("Knowledge entries").parentElement).toHaveTextContent("1");
+  expect(screen.getByText("Mistakes").parentElement).toHaveTextContent("1");
+  expect(screen.getByText("synced partial assessment with 1 knowledge entries and 1 mistakes")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Open question set set-1" })).toHaveAttribute(
+    "href",
+    "/projects/proj-1/stages/stage-1/questions/set-1",
+  );
+  expect(screen.queryByText(/Nested under project/)).not.toBeInTheDocument();
+});
+
+test("MistakesPage renders loaded mistake entries and not the shell placeholder", async () => {
+  renderWithClient(<MistakesPage />, createClient(), "/mistakes");
+
+  expect(screen.getByText("Loading mistakes view...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Mistakes" })).toBeInTheDocument();
+  expect(screen.getByText("Total mistakes: 1")).toBeInTheDocument();
+  expect(screen.getByText("Decision awareness")).toBeInTheDocument();
+  expect(screen.getByText("Root cause: Decision awareness")).toBeInTheDocument();
+  expect(screen.getByText("Avoidance: Review the stage boundary and revisit: Decision awareness")).toBeInTheDocument();
+  expect(screen.queryByText("Empty shell for mistake tracking.")).not.toBeInTheDocument();
+});
+
+test("KnowledgeGraphPage renders loaded graph nodes and not a shell placeholder", async () => {
+  renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
+
+  expect(screen.getByText("Loading knowledge graph view...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Knowledge Graph" })).toBeInTheDocument();
+  expect(screen.getByText("Total nodes: 1")).toBeInTheDocument();
+  expect(screen.getByText("Decision awareness")).toBeInTheDocument();
+  expect(screen.getByText("Derived from partial assessment in stage-1.")).toBeInTheDocument();
+  expect(screen.getByText("Linked mistakes: proj-1:stage-1:a-1:mistake-1")).toBeInTheDocument();
+});
+
+test("KnowledgeIndexPage renders loaded index entries and not a shell placeholder", async () => {
+  renderWithClient(<KnowledgeIndexPage />, createClient(), "/knowledge/index");
+
+  expect(screen.getByText("Loading knowledge index view...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Knowledge Index" })).toBeInTheDocument();
+  expect(screen.getByText("Total entries: 1")).toBeInTheDocument();
+  expect(screen.getByText("Decision awareness")).toBeInTheDocument();
+  expect(screen.getByText("Revisit why this stage needs: Decision awareness")).toBeInTheDocument();
+  expect(screen.getByText("Linked mistakes: proj-1:stage-1:a-1:mistake-1")).toBeInTheDocument();
+});
+
+test("ProposalsPage renders loaded proposal entries and not the shell placeholder", async () => {
+  renderWithClient(<ProposalsPage />, createClient(), "/proposals");
+
+  expect(screen.getByText("Loading proposals view...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Proposals" })).toBeInTheDocument();
+  expect(screen.getByText("Total proposals: 1")).toBeInTheDocument();
+  expect(screen.getByText("Pending review: 1")).toBeInTheDocument();
+  expect(screen.getByText("compress_mistake_entries")).toBeInTheDocument();
+  expect(screen.getByText("Reason: Compress 2 mistake_entries")).toBeInTheDocument();
+  expect(screen.getByText("Preview: Would compress 2 targets from mistake_entries.")).toBeInTheDocument();
+  expect(screen.queryByText("Empty shell for proposal review.")).not.toBeInTheDocument();
+});
+
+test("ProposalsPage applies accept and refreshes proposal execution summary", async () => {
+  const client = createClient({
+    getProposalsView: vi.fn().mockResolvedValueOnce(proposalsView).mockResolvedValueOnce(proposalsViewAfterAccept),
+  });
+
+  renderWithClient(<ProposalsPage />, client, "/proposals");
+
+  await screen.findByRole("heading", { name: "Proposals" });
+  fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+  expect(await screen.findByText("accept on proposal-1 => succeeded")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText("mistake_entries / accepted / 2 targets")).toBeInTheDocument());
+  expect(client.submitProposalAction).toHaveBeenCalledTimes(1);
+});
+
+test("QuestionSetPage renders loaded question set data and not the static placeholder", async () => {
+  renderWithClient(
+    <QuestionSetPage />,
+    createClient(),
+    "/projects/proj-1/stages/stage-1/questions/set-1",
+  );
+
+  expect(screen.getByText("Loading question set...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Question set: Stage-1 review set" })).toBeInTheDocument();
+  expect(screen.getByText("Question q-1")).toBeInTheDocument();
+  expect(screen.getByText("What is the core boundary here?")).toBeInTheDocument();
+  expect(screen.getByText("Question q-2")).toBeInTheDocument();
+  expect(screen.getByText("Why is this boundary necessary?")).toBeInTheDocument();
+  expect(screen.queryByText(/Question set: unknown-set/)).not.toBeInTheDocument();
+});
+
+test("QuestionPage renders loaded question data and not the static placeholder", async () => {
+  renderWithClient(
+    <QuestionPage />,
+    createClient(),
+    "/projects/proj-1/stages/stage-1/questions/set-1/q-2",
+  );
+
+  expect(screen.getByText("Loading question...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Question: Why is this boundary necessary?" })).toBeInTheDocument();
+  expect(screen.getByText("Check whether the user can explain the separation between read and write flows.")).toBeInTheDocument();
+  expect(screen.getByText("Answer in your own words")).toBeInTheDocument();
+  expect(screen.getByText("Stage summary")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Submit answer" })).toBeInTheDocument();
+  expect(screen.getByText("continue_answering")).toBeInTheDocument();
+  expect(screen.queryByText(/Placeholder for question prompt/)).not.toBeInTheDocument();
+});
+
+test("QuestionPage renders a readable error state when the client rejects", async () => {
+  const client = createClient({
+    getQuestionView: vi.fn().mockRejectedValue(new Error("question view unavailable")),
+  });
+
+  renderWithClient(
+    <QuestionPage />,
+    client,
+    "/projects/proj-1/stages/stage-1/questions/set-1/q-2",
+  );
+
+  expect(await screen.findByText("Failed to load question view.")).toBeInTheDocument();
+  expect(screen.getByText("question view unavailable")).toBeInTheDocument();
+});
+
+test("QuestionPage submits an answer and refreshes the stage summary", async () => {
+  const refreshedStageView: StageViewDTO = {
+    ...stageView,
+    mastery_status: "partially_verified",
+  };
+  const client = createClient({
+    getStageView: vi.fn().mockResolvedValueOnce(stageView).mockResolvedValueOnce(refreshedStageView),
+  });
+
+  renderWithClient(
+    <QuestionPage />,
+    client,
+    "/projects/proj-1/stages/stage-1/questions/set-1/q-2",
+  );
+
+  await screen.findByRole("heading", { name: "Question: Why is this boundary necessary?" });
+  fireEvent.change(screen.getByLabelText("Answer"), { target: { value: "Need review" } });
+  fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+  expect(await screen.findByText("Assessment created with verdict partial.")).toBeInTheDocument();
+  expect(screen.getByText("Answer excerpt: Need review")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText("partially_verified")).toBeInTheDocument());
+  expect(client.submitAnswer).toHaveBeenCalledTimes(1);
+});
+
+test("QuestionPage resets answer draft and submit state when route params change", async () => {
+  const client = createClient({
+    getQuestionView: vi
+      .fn()
+      .mockResolvedValueOnce(questionView)
+      .mockResolvedValueOnce({
+        ...questionView,
+        question_id: "q-3",
+        question_level: "abstract",
+        prompt: "How does this boundary generalize?",
+        intent: "Check whether the user can transfer the boundary.",
+      }),
+  });
+
+  render(
+    <ApiClientProvider client={client}>
+      <MemoryRouter initialEntries={["/projects/proj-1/stages/stage-1/questions/set-1/q-2"]}>
+        <nav>
+          <Link to="/projects/proj-1/stages/stage-1/questions/set-1/q-3">Go to q-3</Link>
+        </nav>
+        <Routes>
+          <Route
+            path="/projects/:projectId/stages/:stageId/questions/:questionSetId/:questionId"
+            element={<QuestionPage />}
+          />
+        </Routes>
+      </MemoryRouter>
+    </ApiClientProvider>,
+  );
+
+  await screen.findByRole("heading", { name: "Question: Why is this boundary necessary?" });
+  fireEvent.change(screen.getByLabelText("Answer"), { target: { value: "Need review" } });
+  fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+  await screen.findByText("Assessment created with verdict partial.");
+
+  fireEvent.click(screen.getByRole("link", { name: "Go to q-3" }));
+
+  expect(await screen.findByRole("heading", { name: "Question: How does this boundary generalize?" })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByLabelText("Answer")).toHaveValue(""));
+  expect(screen.queryByText("Assessment created with verdict partial.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Answer excerpt: Need review")).not.toBeInTheDocument();
+});

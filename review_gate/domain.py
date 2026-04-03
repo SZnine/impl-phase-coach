@@ -1,0 +1,269 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field, fields, is_dataclass
+from datetime import datetime
+from enum import Enum
+from json import dumps, loads
+from typing import Any, Self
+
+
+def _to_plain_data(value: Any) -> Any:
+    if is_dataclass(value):
+        return {item.name: _to_plain_data(getattr(value, item.name)) for item in fields(value)}
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, list):
+        return [_to_plain_data(item) for item in value]
+    if isinstance(value, tuple):
+        return [_to_plain_data(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _to_plain_data(item) for key, item in value.items()}
+    return value
+
+
+def _coerce_str(value: Any, default: str = "") -> str:
+    if value is None:
+        return default
+    return str(value)
+
+
+def _coerce_optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _coerce_str_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, tuple):
+        items = list(value)
+    else:
+        items = [value]
+    return [str(item) for item in items]
+
+
+def _coerce_dict_list(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, tuple):
+        items = list(value)
+    else:
+        items = [value]
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _coerce_str_dict(value: Any) -> dict[str, str]:
+    if value is None or not isinstance(value, dict):
+        return {}
+    return {str(key): str(item) for key, item in value.items()}
+
+
+def _coerce_payload_dict(value: Any) -> dict[str, Any]:
+    if value is None or not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
+def _coerce_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    return int(value)
+
+
+@dataclass(slots=True)
+class JsonSerializable:
+    def to_dict(self) -> dict[str, Any]:
+        return _to_plain_data(self)
+
+    def to_json(self) -> str:
+        return dumps(self.to_dict(), ensure_ascii=False, sort_keys=True)
+
+    @classmethod
+    def from_json(cls, payload: str) -> Self:
+        return cls.from_dict(loads(payload))
+
+
+@dataclass(slots=True)
+class WorkspaceSession(JsonSerializable):
+    workspace_session_id: str
+    active_project_id: str | None = None
+    active_stage_id: str | None = None
+    active_panel: str = "questions"
+    active_question_set_id: str | None = None
+    active_question_id: str | None = None
+    active_profile_space_id: str | None = None
+    active_proposal_center_id: str | None = None
+    last_opened_at: str = ""
+    filters: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            workspace_session_id=_coerce_str(payload["workspace_session_id"]),
+            active_project_id=_coerce_optional_str(payload.get("active_project_id")),
+            active_stage_id=_coerce_optional_str(payload.get("active_stage_id")),
+            active_panel=_coerce_str(payload.get("active_panel"), "questions"),
+            active_question_set_id=_coerce_optional_str(payload.get("active_question_set_id")),
+            active_question_id=_coerce_optional_str(payload.get("active_question_id")),
+            active_profile_space_id=_coerce_optional_str(payload.get("active_profile_space_id")),
+            active_proposal_center_id=_coerce_optional_str(payload.get("active_proposal_center_id")),
+            last_opened_at=_coerce_str(payload.get("last_opened_at"), ""),
+            filters=_coerce_str_dict(payload.get("filters")),
+        )
+
+
+@dataclass(slots=True)
+class QuestionSet(JsonSerializable):
+    question_set_id: str
+    stage_review_id: str
+    title: str = ""
+    status: str = "active"
+    question_ids: list[str] = field(default_factory=list)
+    active_question_id: str | None = None
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            question_set_id=_coerce_str(payload["question_set_id"]),
+            stage_review_id=_coerce_str(payload["stage_review_id"]),
+            title=_coerce_str(payload.get("title"), ""),
+            status=_coerce_str(payload.get("status"), "active"),
+            question_ids=_coerce_str_list(payload.get("question_ids")),
+            active_question_id=_coerce_optional_str(payload.get("active_question_id")),
+        )
+
+
+@dataclass(slots=True)
+class StageReview(JsonSerializable):
+    stage_review_id: str
+    project_id: str
+    stage_id: str
+    stage_label: str
+    stage_goal: str
+    status: str
+    question_set_ids: list[str] = field(default_factory=list)
+    active_question_set_id: str | None = None
+    history_count: int = 0
+    retention_status: str = "active"
+    related_mistake_ids: list[str] = field(default_factory=list)
+    related_knowledge_node_ids: list[str] = field(default_factory=list)
+    related_index_entry_ids: list[str] = field(default_factory=list)
+    related_proposal_ids: list[str] = field(default_factory=list)
+    mastery_status: str = "unverified"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            stage_review_id=_coerce_str(payload["stage_review_id"]),
+            project_id=_coerce_str(payload["project_id"]),
+            stage_id=_coerce_str(payload["stage_id"]),
+            stage_label=_coerce_str(payload.get("stage_label"), ""),
+            stage_goal=_coerce_str(payload.get("stage_goal"), ""),
+            status=_coerce_str(payload.get("status"), ""),
+            question_set_ids=_coerce_str_list(payload.get("question_set_ids")),
+            active_question_set_id=_coerce_optional_str(payload.get("active_question_set_id")),
+            history_count=_coerce_int(payload.get("history_count"), 0),
+            retention_status=_coerce_str(payload.get("retention_status"), "active"),
+            related_mistake_ids=_coerce_str_list(payload.get("related_mistake_ids")),
+            related_knowledge_node_ids=_coerce_str_list(payload.get("related_knowledge_node_ids")),
+            related_index_entry_ids=_coerce_str_list(payload.get("related_index_entry_ids")),
+            related_proposal_ids=_coerce_str_list(payload.get("related_proposal_ids")),
+            mastery_status=_coerce_str(payload.get("mastery_status"), "unverified"),
+        )
+
+
+@dataclass(slots=True)
+class ProjectReview(JsonSerializable):
+    project_id: str
+    project_label: str
+    project_summary: str
+    stage_reviews: list[StageReview] = field(default_factory=list)
+    knowledge_index_id: str | None = None
+    knowledge_graph_id: str | None = None
+    profile_space_id: str | None = None
+    proposal_center_id: str | None = None
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            project_id=_coerce_str(payload["project_id"]),
+            project_label=_coerce_str(payload.get("project_label"), ""),
+            project_summary=_coerce_str(payload.get("project_summary"), ""),
+            stage_reviews=[StageReview.from_dict(item) for item in _coerce_dict_list(payload.get("stage_reviews"))],
+            knowledge_index_id=_coerce_optional_str(payload.get("knowledge_index_id")),
+            knowledge_graph_id=_coerce_optional_str(payload.get("knowledge_graph_id")),
+            profile_space_id=_coerce_optional_str(payload.get("profile_space_id")),
+            proposal_center_id=_coerce_optional_str(payload.get("proposal_center_id")),
+        )
+
+
+@dataclass(slots=True)
+class ProfileSpace(JsonSerializable):
+    profile_space_id: str
+    project_id: str
+    label: str = ""
+    summary: str = ""
+    mistake_ids: list[str] = field(default_factory=list)
+    index_entry_ids: list[str] = field(default_factory=list)
+    knowledge_node_ids: list[str] = field(default_factory=list)
+    proposal_ids: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            profile_space_id=_coerce_str(payload["profile_space_id"]),
+            project_id=_coerce_str(payload["project_id"]),
+            label=_coerce_str(payload.get("label"), ""),
+            summary=_coerce_str(payload.get("summary"), ""),
+            mistake_ids=_coerce_str_list(payload.get("mistake_ids")),
+            index_entry_ids=_coerce_str_list(payload.get("index_entry_ids")),
+            knowledge_node_ids=_coerce_str_list(payload.get("knowledge_node_ids")),
+            proposal_ids=_coerce_str_list(payload.get("proposal_ids")),
+        )
+
+
+@dataclass(slots=True)
+class ProposalCenter(JsonSerializable):
+    proposal_center_id: str
+    project_id: str
+    proposal_ids: list[str] = field(default_factory=list)
+    active_proposal_id: str | None = None
+    status: str = "active"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            proposal_center_id=_coerce_str(payload["proposal_center_id"]),
+            project_id=_coerce_str(payload["project_id"]),
+            proposal_ids=_coerce_str_list(payload.get("proposal_ids")),
+            active_proposal_id=_coerce_optional_str(payload.get("active_proposal_id")),
+            status=_coerce_str(payload.get("status"), "active"),
+        )
+
+
+@dataclass(slots=True)
+class WorkspaceEvent(JsonSerializable):
+    event_id: str
+    project_id: str | None
+    event_type: str
+    created_at: str
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            event_id=_coerce_str(payload["event_id"]),
+            project_id=_coerce_optional_str(payload.get("project_id")),
+            event_type=_coerce_str(payload["event_type"]),
+            created_at=_coerce_str(payload["created_at"]),
+            payload=_coerce_payload_dict(payload.get("payload")),
+        )
+
+
+def current_utc_timestamp() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"

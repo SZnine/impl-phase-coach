@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 
 artifacts/
+.workbench/
 
 .DS_Store
 Thumbs.db
+
+frontend/dist/
+frontend/node_modules/
