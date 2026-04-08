@@ -25,7 +25,7 @@ class ProfileSpaceService:
         verdict = str(assessment.get("verdict", "unknown"))
         core_gaps = [str(item).strip() for item in assessment.get("core_gaps", []) if str(item).strip()]
         misconceptions = [str(item).strip() for item in assessment.get("misconceptions", []) if str(item).strip()]
-        has_meaningful_signal = verdict in {"partial", "weak", "strong"} or bool(core_gaps or misconceptions)
+        has_meaningful_signal = bool(core_gaps or misconceptions)
         profile_space_id = self._profile_space_id(project_id)
 
         mistake_ids: list[str] = []

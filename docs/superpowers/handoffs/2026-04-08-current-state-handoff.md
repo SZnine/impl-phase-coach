@@ -1,239 +1,229 @@
-# impl-phase-coach Current State Handoff
+# impl-phase-coach 当前状态接手文档
 
-> 用途：给新对话一个显式、可读、可操作的接手入口。  
-> 当前仓库状态以本文件为主，不要求新对话先理解完整历史对话。
+用途：给后续对话或后续阶段快速接手当前工作，不依赖完整历史对话。
 
-## 1. 当前仓库与基线
+## 1. 当前基线
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 当前工作区状态：`clean`
-- 最近提交：`01f50ae feat: build persistent review workbench mvp`
-- 上一个基线提交：`e13cbe0 chore: establish initial impl-phase-coach baseline`
+- 最近已提交基线：`a8f6702 feat: persist durable review facts`
+- 当前主线：`稳定性优先`
+- 当前工作区：存在未提交改动，这些改动主要是：
+  1. 会话恢复合法性与分级回退
+  2. ProfileSpace 信号门槛一致性收口
+  3. handoff 文档更新
 
-## 2. 当前所处主阶段
+## 2. 当前主线
 
-当前处于：`阶段 17 / 稳定性优先路线冻结后，等待下一轮实现`
+当前不是继续扩页面，也不是先做知识质量增强。
+当前已经冻结的主线是：
 
-这意味着：
+1. 先把工作台做成“本地长期真能用”的产品
+2. 先补稳定性、恢复和状态一致性
+3. 再做知识质量和交互增强
 
-1. 工作台 MVP 骨架已经完成，不再是 demo。
-2. 长期集合已经有真实持久化默认启动路径。
-3. 下一轮不该扩新页面，也不该先做知识质量增强。
-4. 下一轮主线应该是：`稳定性优先`
+当前主线顺序固定为：
 
-## 3. 当前已经真实打通的链路
+1. 题流事实真实化
+2. 会话恢复补全
+3. 真实使用测试与稳定性收口
+4. 之后才进入知识质量提升
 
-### 3.1 主答题链
+## 3. 已完成能力
 
-已经真实成立：
+### 3.1 工作台骨架
 
-1. 首页 -> 项目页 -> 阶段页 -> 题集页 -> 题目页
+这些页面已经存在并能工作：
+
+1. 首页
+2. 项目页
+3. 阶段页
+4. 题集页
+5. 题目页
+6. 错题集页
+7. 知识索引页
+8. 知识图页
+9. 建议中心页
+
+### 3.2 主答题链
+
+这条链已经是真实链路：
+
+1. `Home -> Project -> Stage -> QuestionSet -> Question`
 2. `submit_answer -> assessment -> stage summary refresh`
+3. `submit_answer -> AnswerFact / AssessmentFact / DecisionFact`
 
 关键文件：
 
-- [review_flow_service.py](/d:/Desktop/impl-phase-coach/review_gate/review_flow_service.py)
-- [workspace_api.py](/d:/Desktop/impl-phase-coach/review_gate/workspace_api.py)
-- [http_api.py](/d:/Desktop/impl-phase-coach/review_gate/http_api.py)
-- [QuestionPage.tsx](/d:/Desktop/impl-phase-coach/frontend/src/pages/QuestionPage.tsx)
-- [api.ts](/d:/Desktop/impl-phase-coach/frontend/src/lib/api.ts)
+- `review_gate/review_flow_service.py`
+- `review_gate/workspace_api.py`
+- `review_gate/http_api.py`
+- `review_gate/storage_sqlite.py`
+- `frontend/src/pages/QuestionPage.tsx`
+- `frontend/src/lib/api.ts`
 
-### 3.2 长期知识集合只读链
+### 3.3 长期集合链路
 
-已经真实成立：
+这些长期集合已经是真实页面，不再是占位壳：
 
-1. `assessment -> ProfileSpace -> MistakesPage`
-2. `assessment -> ProfileSpace -> KnowledgeIndexPage`
-3. `assessment -> ProfileSpace -> KnowledgeGraphPage`
+1. 错题集页：`assessment -> ProfileSpace -> MistakesPage`
+2. 知识索引页：`assessment -> ProfileSpace -> KnowledgeIndexPage`
+3. 知识图页：`assessment -> ProfileSpace -> KnowledgeGraphPage`
+4. 建议中心页：`ProposalCenter -> ProposalsPage`
 
-关键文件：
+### 3.4 建议中心最小动作闭环
 
-- [profile_space_service.py](/d:/Desktop/impl-phase-coach/review_gate/profile_space_service.py)
-- [MistakesPage.tsx](/d:/Desktop/impl-phase-coach/frontend/src/pages/MistakesPage.tsx)
-- [KnowledgeIndexPage.tsx](/d:/Desktop/impl-phase-coach/frontend/src/pages/KnowledgeIndexPage.tsx)
-- [KnowledgeGraphPage.tsx](/d:/Desktop/impl-phase-coach/frontend/src/pages/KnowledgeGraphPage.tsx)
+当前最小动作闭环已成立：
 
-### 3.3 ProposalCenter 最小动作链
+1. `accept`
+2. `reject`
+3. `defer`
 
-已经真实成立：
+并且已经守住这条边界：
 
-1. `ProposalsPage` 读真实 proposal
-2. `accept / reject / defer` 三个最小动作闭环
-3. proposal 状态和 execution 结果分离
+- `proposal status` 和 `execution status` 分开
 
-关键文件：
+### 3.5 默认真实持久化启动路径
 
-- [proposal_center_service.py](/d:/Desktop/impl-phase-coach/review_gate/proposal_center_service.py)
-- [ProposalsPage.tsx](/d:/Desktop/impl-phase-coach/frontend/src/pages/ProposalsPage.tsx)
-- [action_dtos.py](/d:/Desktop/impl-phase-coach/review_gate/action_dtos.py)
-- [view_dtos.py](/d:/Desktop/impl-phase-coach/review_gate/view_dtos.py)
-
-### 3.4 默认真实持久化启动路径
-
-当前默认启动已经不再走纯 testing service。
+默认启动已经不再走纯 testing service。
 
 默认入口：
 
-- [http_api.py](/d:/Desktop/impl-phase-coach/review_gate/http_api.py)
+- `review_gate/http_api.py`
 
 默认真实宿主：
 
-1. `ProfileSpaceService.with_store(store)`
-2. `ProposalCenterService.with_store(store)`
-3. `ReviewFlowService.with_store(store)`
+1. `ReviewFlowService.with_store(store)`
+2. `ProfileSpaceService.with_store(store)`
+3. `ProposalCenterService.with_store(store)`
 4. `JsonWorkspaceStateStore(...)`
 
-默认本地数据路径：
+默认本地运行数据路径：
 
 1. SQLite：`.workbench/review-workbench.sqlite3`
 2. Session：`.workbench/workspace-session.json`
 
-## 4. 当前已经补上的稳定性能力
+## 4. 当前已完成的稳定性能力
 
-### 4.1 已补上
+当前已经补上的稳定性能力：
 
 1. `stage mastery` 跨重开恢复
-2. `WorkspaceSession` 的默认路由位置恢复
-3. 关闭再打开后，长期集合数据能回来
+2. `WorkspaceSession` 默认路径级恢复
+3. 长期集合数据跨重开恢复
+4. `Answer / Assessment / Decision` durable facts 已落盘
+5. 非法 session 恢复目标会被后端收正并分级回退
+6. `ProfileSpace` 的 durable knowledge 信号门槛已统一
 
-关键文件：
+## 5. 当前仍是过渡态的部分
 
-- [review_flow_service.py](/d:/Desktop/impl-phase-coach/review_gate/review_flow_service.py)
-- [workspace_state_store.py](/d:/Desktop/impl-phase-coach/review_gate/workspace_state_store.py)
-- [WorkspaceSessionSync.tsx](/d:/Desktop/impl-phase-coach/frontend/src/components/WorkspaceSessionSync.tsx)
+这些现在能跑，但还不能误判成最终写法：
 
-### 4.2 当前还没有补全的部分
+1. `review_flow_service.py` 仍整体偏 deterministic shell
+2. `QuestionSet` 更完整的事实状态还没有 fully durable
+3. `WorkspaceSessionSync.tsx` 当前只恢复路径级定位
+4. 草稿、复杂过滤器、pause 中间态还没有恢复
+5. `ProfileSpaceService` 的知识提炼规则仍是轻量规则，不是知识质量优化版本
+6. `ProposalCenterService` 仍是最小维护链，不是完整维护系统
 
-这些是“下一轮稳定性主线”要继续补的，不要误判成已经完成：
+## 6. 当前最重要的边界
 
-1. `Answer / Assessment / Decision` 题流事实的完整真实宿主
-2. `QuestionSet` 的真实题流状态恢复
-3. 更细粒度的 session 恢复：
-   - 过滤器
-   - 草稿
-   - pause 状态
-4. 更完整的真实使用失败回放
+后续接手时最容易混淆的是这 4 条边界：
 
-## 5. 当前哪些写法还是过渡态
+1. `ReviewFlowService` 负责题流事实
+2. `ProfileSpaceService` 负责长期知识资产
+3. `ProposalCenterService` 负责 proposal / action / execution
+4. `WorkspaceSession` 只负责“我上次停在哪”，不负责业务事实
 
-### 5.1 仍然是过渡写法
+如果后续实现把这 4 层混掉，系统会重新变胖。
 
-1. [review_flow_service.py](/d:/Desktop/impl-phase-coach/review_gate/review_flow_service.py)
-   - 仍然整体偏 deterministic shell
-   - 当前真实化的重点是 `mastery_status`
-   - 还没有把完整 `Answer / Assessment / Decision` 都做成 durable facts
+## 7. 最近验证结果
 
-2. [profile_space_service.py](/d:/Desktop/impl-phase-coach/review_gate/profile_space_service.py)
-   - 已经支持 `with_store(...)`
-   - 但知识提炼规则仍是轻量规则，不是最终质量版
+最近已经验证通过：
 
-3. [proposal_center_service.py](/d:/Desktop/impl-phase-coach/review_gate/proposal_center_service.py)
-   - 已经支持 `with_store(...)`
-   - 但 proposal 生成策略、批量动作和复杂执行流都没做
-
-4. [WorkspaceSessionSync.tsx](/d:/Desktop/impl-phase-coach/frontend/src/components/WorkspaceSessionSync.tsx)
-   - 当前只恢复“路径级定位”
-   - 没有恢复草稿、复杂过滤器、临时 UI 状态
-
-### 5.2 已经接近长期稳定写法
-
-1. `workspace_api -> http_api -> api.ts -> pages` 这条门面链
-2. DTO 边界：
-   - `action_dtos.py`
-   - `view_dtos.py`
-3. 长期集合本体页和阶段摘要切片分离：
-   - 阶段页只看摘要
-   - 错题 / 索引 / 图 / proposal 页看本体
-
-## 6. 当前已经验证过的测试结果
-
-最后一次已知稳定验证结果：
-
-1. `python -m pytest -q` -> `89 passed`
+1. `python -m pytest -q` -> `94 passed`
 2. `npm --prefix frontend test` -> `31 passed`
 3. `npm --prefix frontend run build` -> `passed`
 
-说明：
+另外，第二轮和第三轮真实场景试跑已经证明：
 
-1. 这些结果来自稳定性主线收口后的验证。
-2. 如果新对话开始接手前担心代码漂移，可以先重跑这 3 条命令。
+1. 正常恢复链成立
+2. 非法恢复目标分级回退成立
+3. `strong + 无 gaps` 不再产出 graph node 噪音
 
-## 7. 当前已知的非阻塞项
+相关产物：
 
-这两个问题当前不是阻塞项，不要在新对话一开始就优先修它们：
+- `artifacts/workbench-live-trial/20260408-153730/summary.md`
+- `artifacts/workbench-live-trial/20260408-154900/summary.md`
+
+## 8. 当前已知非阻塞项
+
+这两项当前不是主线阻塞，不要优先修：
 
 1. React Router v7 future flag warning
-2. [App.test.tsx](/d:/Desktop/impl-phase-coach/frontend/src/App.test.tsx) 相关的 `act(...)` warning
+2. `App.test.tsx` 里的 `act(...)` warning
 
-原因：
+## 9. 当前明确不做
 
-1. 它们不影响当前真实链路验收。
-2. 当前主线优先级是稳定性，不是测试控制台洁癖。
+下一轮不要先做这些：
 
-## 8. 已冻结的下一轮路线
-
-新对话不要重新做高层战略讨论，直接沿这条路线推进：
-
-### 主线：稳定性优先
-
-顺序固定为：
-
-1. `迭代 1：题流事实真实化`
-2. `迭代 2：会话恢复补全`
-3. `迭代 3：真实使用测试与稳定性收口`
-
-明确先不做：
-
-1. 知识质量提升
+1. 知识质量增强
 2. 知识图高级交互
 3. proposal 批量操作
 4. 多用户
 5. 云同步
 6. 视觉重做
 
-## 9. 新对话最应该先读的文件
+## 10. 下一步建议
 
-如果新对话需要快速接手，不要全仓乱读，优先按这个顺序开：
+如果继续当前主线，最合理的下一步不是扩页面，而是继续稳定性收口。
 
-1. [docs/superpowers/handoffs/2026-04-08-current-state-handoff.md](/d:/Desktop/impl-phase-coach/docs/superpowers/handoffs/2026-04-08-current-state-handoff.md)
-2. [review_gate/http_api.py](/d:/Desktop/impl-phase-coach/review_gate/http_api.py)
-3. [review_gate/workspace_api.py](/d:/Desktop/impl-phase-coach/review_gate/workspace_api.py)
-4. [review_gate/review_flow_service.py](/d:/Desktop/impl-phase-coach/review_gate/review_flow_service.py)
-5. [review_gate/profile_space_service.py](/d:/Desktop/impl-phase-coach/review_gate/profile_space_service.py)
-6. [review_gate/proposal_center_service.py](/d:/Desktop/impl-phase-coach/review_gate/proposal_center_service.py)
-7. [frontend/src/components/WorkspaceSessionSync.tsx](/d:/Desktop/impl-phase-coach/frontend/src/components/WorkspaceSessionSync.tsx)
-8. [frontend/src/lib/api.ts](/d:/Desktop/impl-phase-coach/frontend/src/lib/api.ts)
+建议优先级：
 
-如果要看测试锚点，再读：
+1. 继续补 `QuestionSet` 更完整 durable facts
+2. 再补 session 的更细恢复边界
+3. 再做人测和稳定性整理
 
-1. [tests/test_http_api.py](/d:/Desktop/impl-phase-coach/tests/test_http_api.py)
-2. [tests/test_workspace_api.py](/d:/Desktop/impl-phase-coach/tests/test_workspace_api.py)
-3. [tests/test_profile_space_service.py](/d:/Desktop/impl-phase-coach/tests/test_profile_space_service.py)
-4. [tests/test_proposal_center_service.py](/d:/Desktop/impl-phase-coach/tests/test_proposal_center_service.py)
-5. [frontend/src/components/WorkspaceSessionSync.test.tsx](/d:/Desktop/impl-phase-coach/frontend/src/components/WorkspaceSessionSync.test.tsx)
-6. [frontend/src/lib/api.test.ts](/d:/Desktop/impl-phase-coach/frontend/src/lib/api.test.ts)
+## 11. 最应该先读的文件
 
-## 10. 新对话的启动 prompt
+如果后续对话或后续阶段要快速接手，优先按这个顺序读：
 
-下面这段可以直接贴到新对话里：
+1. `docs/superpowers/handoffs/2026-04-08-current-state-handoff.md`
+2. `docs/superpowers/plans/2026-04-08-review-flow-durable-facts.md`
+3. `review_gate/http_api.py`
+4. `review_gate/workspace_api.py`
+5. `review_gate/review_flow_service.py`
+6. `review_gate/storage_sqlite.py`
+7. `frontend/src/components/WorkspaceSessionSync.tsx`
+8. `frontend/src/lib/api.ts`
+
+如果需要看测试锚点，再读：
+
+1. `tests/test_http_api.py`
+2. `tests/test_workspace_api.py`
+3. `tests/test_profile_space_service.py`
+4. `tests/test_proposal_center_service.py`
+5. `frontend/src/components/WorkspaceSessionSync.test.tsx`
+6. `frontend/src/lib/api.test.ts`
+
+## 12. 新对话启动 prompt
 
 ```text
 你当前接手的是 D:\Desktop\impl-phase-coach 仓库，继续沿用 impl-phase-coach 的阶段化协作方式。
 
-先不要重做高层讨论，也不要重新发散需求。
-
-先读取：
+先不要重做高层战略讨论，也不要扩散需求。
+先读：
 1. docs/superpowers/handoffs/2026-04-08-current-state-handoff.md
-2. review_gate/http_api.py
-3. review_gate/workspace_api.py
-4. review_gate/review_flow_service.py
-5. frontend/src/components/WorkspaceSessionSync.tsx
-6. frontend/src/lib/api.ts
+2. docs/superpowers/plans/2026-04-08-review-flow-durable-facts.md
+3. review_gate/http_api.py
+4. review_gate/workspace_api.py
+5. review_gate/review_flow_service.py
+6. review_gate/storage_sqlite.py
+7. frontend/src/components/WorkspaceSessionSync.tsx
+8. frontend/src/lib/api.ts
 
-当前已冻结主线是“稳定性优先”，不要跳去做知识质量增强或新页面扩展。
+当前冻结主线是“稳定性优先”，不要跳去做知识质量增强或新页面扩展。
 
-当前最重要的边界：
+最重要的边界：
 1. ReviewFlowService 管题流事实
 2. ProfileSpaceService 管长期知识资产
 3. ProposalCenterService 管 proposal/action/execution
@@ -244,22 +234,5 @@
 - 当前阶段产物
 - 当前阶段退出条件
 
-然后沿“稳定性优先”主线推进，不要跨阶段。
+然后沿“稳定性优先”主线继续推进，不要跨阶段。
 ```
-
-## 11. 如果新对话要继续实现，建议从哪里开始
-
-推荐起点：
-
-1. 先用当前 handoff 文档确认主线没有漂
-2. 再写新的稳定性计划文档
-3. 然后进入：
-   - `迭代 1 / 题流事实真实化`
-
-不建议起点：
-
-1. 直接重构知识图
-2. 直接优化知识提炼质量
-3. 直接扩 proposal 批量动作
-4. 直接重做首页视觉
-

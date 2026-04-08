@@ -164,3 +164,26 @@ def test_profile_space_service_keeps_zero_summary_for_weak_assessment_without_ga
     assert summary["latest_summary"] == "synced weak assessment without durable knowledge additions"
     assert service.list_mistakes(project_id="proj-1", stage_id="stage-1") == []
     assert service.list_index_entries(project_id="proj-1", stage_id="stage-1") == []
+    assert service.list_knowledge_nodes(project_id="proj-1", stage_id="stage-1") == []
+
+
+def test_profile_space_service_skips_knowledge_nodes_for_strong_assessment_without_gaps() -> None:
+    service = ProfileSpaceService.for_testing()
+
+    result = service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "a-6",
+            "verdict": "strong",
+            "misconceptions": [],
+            "core_gaps": [],
+        },
+    )
+
+    summary = service.get_stage_knowledge_summary("proj-1", "stage-1")
+    assert result["knowledge_node_ids"] == []
+    assert summary["knowledge_entry_count"] == 0
+    assert summary["mistake_count"] == 0
+    assert summary["latest_summary"] == "synced strong assessment without durable knowledge additions"
+    assert service.list_knowledge_nodes(project_id="proj-1", stage_id="stage-1") == []

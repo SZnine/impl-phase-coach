@@ -159,6 +159,40 @@ class ReviewFlowService:
             questions=questions,
         )
 
+    def project_exists(self, project_id: str | None) -> bool:
+        return project_id is not None and project_id in self._PROJECTS
+
+    def stage_exists(self, project_id: str | None, stage_id: str | None) -> bool:
+        if not self.project_exists(project_id) or stage_id is None:
+            return False
+        project = self._PROJECTS[project_id]
+        return any(stage["stage_id"] == stage_id for stage in project["stages"])
+
+    def question_set_exists(self, project_id: str | None, stage_id: str | None, question_set_id: str | None) -> bool:
+        if not self.stage_exists(project_id, stage_id) or question_set_id is None:
+            return False
+        stage = self._get_stage_review(project_id, stage_id)
+        if stage is not None and stage.active_question_set_id is not None:
+            return question_set_id == stage.active_question_set_id
+        stage_definition = self._get_stage_definition(project_id, stage_id)
+        return question_set_id == stage_definition.get("active_question_set_id")
+
+    def question_exists(
+        self,
+        project_id: str | None,
+        stage_id: str | None,
+        question_set_id: str | None,
+        question_id: str | None,
+    ) -> bool:
+        if not self.question_set_exists(project_id, stage_id, question_set_id) or question_id is None:
+            return False
+        expected_ids = {
+            f"{question_set_id}-q-1",
+            f"{question_set_id}-q-2",
+            f"{question_set_id}-q-3",
+        }
+        return question_id in expected_ids
+
     def get_question_view(
         self,
         project_id: str,

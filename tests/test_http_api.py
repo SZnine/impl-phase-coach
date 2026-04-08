@@ -431,3 +431,67 @@ def test_http_api_round_trips_workspace_session_between_instances(tmp_path: Path
     assert load_response.json()["active_question_set_id"] == "set-1"
     assert load_response.json()["active_question_id"] == "set-1-q-2"
 
+def test_http_api_sanitizes_invalid_question_restore_target(tmp_path: Path) -> None:
+    db_path = tmp_path / "workbench.sqlite3"
+    client = TestClient(create_app(db_path=db_path))
+
+    save_response = client.put(
+        "/api/workspace-session",
+        json={
+            "workspace_session_id": "local-workspace-session",
+            "active_project_id": "proj-1",
+            "active_stage_id": "stage-1",
+            "active_panel": "questions",
+            "active_question_set_id": "set-1",
+            "active_question_id": "set-1-q-99",
+            "active_profile_space_id": None,
+            "active_proposal_center_id": None,
+            "last_opened_at": "2026-04-03T00:00:00Z",
+            "filters": {},
+        },
+    )
+
+    assert save_response.status_code == 200
+    assert save_response.json()["active_project_id"] == "proj-1"
+    assert save_response.json()["active_stage_id"] == "stage-1"
+    assert save_response.json()["active_question_set_id"] == "set-1"
+    assert save_response.json()["active_question_id"] is None
+
+    load_response = client.get("/api/workspace-session")
+    assert load_response.status_code == 200
+    assert load_response.json()["active_question_set_id"] == "set-1"
+    assert load_response.json()["active_question_id"] is None
+
+
+def test_http_api_sanitizes_invalid_stage_restore_target(tmp_path: Path) -> None:
+    db_path = tmp_path / "workbench.sqlite3"
+    client = TestClient(create_app(db_path=db_path))
+
+    save_response = client.put(
+        "/api/workspace-session",
+        json={
+            "workspace_session_id": "local-workspace-session",
+            "active_project_id": "proj-1",
+            "active_stage_id": "stage-99",
+            "active_panel": "questions",
+            "active_question_set_id": "set-99",
+            "active_question_id": "set-99-q-1",
+            "active_profile_space_id": None,
+            "active_proposal_center_id": None,
+            "last_opened_at": "2026-04-03T00:00:00Z",
+            "filters": {},
+        },
+    )
+
+    assert save_response.status_code == 200
+    assert save_response.json()["active_project_id"] == "proj-1"
+    assert save_response.json()["active_stage_id"] is None
+    assert save_response.json()["active_question_set_id"] is None
+    assert save_response.json()["active_question_id"] is None
+    assert save_response.json()["active_panel"] == "projects"
+
+    load_response = client.get("/api/workspace-session")
+    assert load_response.status_code == 200
+    assert load_response.json()["active_project_id"] == "proj-1"
+    assert load_response.json()["active_stage_id"] is None
+    assert load_response.json()["active_panel"] == "projects"

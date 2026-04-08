@@ -61,14 +61,8 @@ class WorkspaceAPI:
             filters=dict(session.filters),
         )
 
-    def get_workspace_session(self) -> WorkspaceSessionDTO:
-        session = self._session_store.load() if self._session_store is not None else None
-        if session is None:
-            session = self._default_workspace_session()
-        return self._session_to_dto(session)
-
-    def save_workspace_session(self, payload: WorkspaceSessionDTO) -> WorkspaceSessionDTO:
-        session = WorkspaceSession(
+    def _sanitize_workspace_session_dto(self, payload: WorkspaceSessionDTO) -> WorkspaceSessionDTO:
+        sanitized = WorkspaceSessionDTO(
             workspace_session_id=payload.workspace_session_id,
             active_project_id=payload.active_project_id,
             active_stage_id=payload.active_stage_id,
@@ -80,9 +74,84 @@ class WorkspaceAPI:
             last_opened_at=payload.last_opened_at,
             filters=dict(payload.filters),
         )
+
+        if sanitized.active_panel in {"mistakes", "knowledge_index", "knowledge_graph", "proposals"}:
+            return sanitized
+
+        if not self._flow.project_exists(sanitized.active_project_id):
+            sanitized.active_project_id = None
+            sanitized.active_stage_id = None
+            sanitized.active_question_set_id = None
+            sanitized.active_question_id = None
+            sanitized.active_panel = "projects"
+            return sanitized
+
+        if not self._flow.stage_exists(sanitized.active_project_id, sanitized.active_stage_id):
+            sanitized.active_stage_id = None
+            sanitized.active_question_set_id = None
+            sanitized.active_question_id = None
+            sanitized.active_panel = "projects"
+            return sanitized
+
+        if not self._flow.question_set_exists(
+            sanitized.active_project_id,
+            sanitized.active_stage_id,
+            sanitized.active_question_set_id,
+        ):
+            sanitized.active_question_set_id = None
+            sanitized.active_question_id = None
+            sanitized.active_panel = "questions"
+            return sanitized
+
+        if not self._flow.question_exists(
+            sanitized.active_project_id,
+            sanitized.active_stage_id,
+            sanitized.active_question_set_id,
+            sanitized.active_question_id,
+        ):
+            sanitized.active_question_id = None
+            sanitized.active_panel = "questions"
+
+        return sanitized
+
+    def get_workspace_session(self) -> WorkspaceSessionDTO:
+        session = self._session_store.load() if self._session_store is not None else None
+        if session is None:
+            session = self._default_workspace_session()
+        sanitized = self._sanitize_workspace_session_dto(self._session_to_dto(session))
+        if self._session_store is not None:
+            persisted = WorkspaceSession(
+                workspace_session_id=sanitized.workspace_session_id,
+                active_project_id=sanitized.active_project_id,
+                active_stage_id=sanitized.active_stage_id,
+                active_panel=sanitized.active_panel,
+                active_question_set_id=sanitized.active_question_set_id,
+                active_question_id=sanitized.active_question_id,
+                active_profile_space_id=sanitized.active_profile_space_id,
+                active_proposal_center_id=sanitized.active_proposal_center_id,
+                last_opened_at=sanitized.last_opened_at,
+                filters=dict(sanitized.filters),
+            )
+            self._session_store.save(persisted)
+        return sanitized
+
+    def save_workspace_session(self, payload: WorkspaceSessionDTO) -> WorkspaceSessionDTO:
+        sanitized = self._sanitize_workspace_session_dto(payload)
+        session = WorkspaceSession(
+            workspace_session_id=sanitized.workspace_session_id,
+            active_project_id=sanitized.active_project_id,
+            active_stage_id=sanitized.active_stage_id,
+            active_panel=sanitized.active_panel,
+            active_question_set_id=sanitized.active_question_set_id,
+            active_question_id=sanitized.active_question_id,
+            active_profile_space_id=sanitized.active_profile_space_id,
+            active_proposal_center_id=sanitized.active_proposal_center_id,
+            last_opened_at=sanitized.last_opened_at,
+            filters=dict(sanitized.filters),
+        )
         if self._session_store is not None:
             self._session_store.save(session)
-        return self._session_to_dto(session)
+        return sanitized
 
     def get_home_view(self) -> HomeViewDTO:
         projects = []
