@@ -10,12 +10,18 @@ from review_gate.domain import (
     UserNodeState,
     current_utc_timestamp,
 )
+from review_gate.explanation_generators import DeterministicFocusExplanationGenerator, FocusExplanationGenerator
 from review_gate.storage_sqlite import SQLiteStore
 
 
 class ProfileSpaceService:
-    def __init__(self, store: SQLiteStore | None = None) -> None:
+    def __init__(
+        self,
+        store: SQLiteStore | None = None,
+        generator: FocusExplanationGenerator | None = None,
+    ) -> None:
         self._store = store
+        self._focus_explanation_generator = generator or DeterministicFocusExplanationGenerator()
         self._stage_summaries: dict[tuple[str, str], dict] = {}
         self._mistakes: dict[str, dict] = {}
         self._index_entries: dict[str, dict] = {}
@@ -28,12 +34,12 @@ class ProfileSpaceService:
         self._focus_explanations: dict[tuple[str, str], dict] = {}
 
     @classmethod
-    def for_testing(cls) -> "ProfileSpaceService":
-        return cls()
+    def for_testing(cls, generator: FocusExplanationGenerator | None = None) -> "ProfileSpaceService":
+        return cls(generator=generator)
 
     @classmethod
-    def with_store(cls, store: SQLiteStore) -> "ProfileSpaceService":
-        return cls(store=store)
+    def with_store(cls, store: SQLiteStore, generator: FocusExplanationGenerator | None = None) -> "ProfileSpaceService":
+        return cls(store=store, generator=generator)
 
     def sync_from_assessment(self, project_id: str, stage_id: str, assessment: dict) -> dict:
         assessment_id = str(assessment.get("assessment_id", "assessment-unknown"))
@@ -613,33 +619,7 @@ class ProfileSpaceService:
         }
 
     def _build_focus_explanation(self, *, profile_space_id: str, cluster: dict) -> dict:
-        return {
-            "explanation_id": f"focus_cluster:{cluster['cluster_id']}",
-            "profile_space_id": profile_space_id,
-            "subject_type": "focus_cluster",
-            "subject_id": cluster["cluster_id"],
-            "reason_codes": list(cluster.get("focus_reason_codes", [])),
-            "summary": self._build_focus_explanation_summary(cluster),
-            "generated_by": "deterministic",
-            "generated_at": current_utc_timestamp(),
-            "version": "v1",
-        }
-
-    def _build_focus_explanation_summary(self, cluster: dict) -> str:
-        title = str(cluster.get("title", "This cluster")).replace(" hotspot", "")
-        codes = list(cluster.get("focus_reason_codes", []))
-        if "weak_signal_active" in codes and "current_project_hit" in codes:
-            return f"{title} matters now because the current stage exposed it as an active weak area."
-        if "weak_signal_active" in codes:
-            return f"{title} matters now because it still shows an active weak signal."
-        if "current_project_hit" in codes:
-            return f"{title} matters now because the current project is actively hitting it."
-        if "foundation_hot" in codes:
-            return f"{title} matters now because it is acting as a frequently triggered foundation hotspot."
-        if "recently_changed" in codes:
-            return f"{title} matters now because its supporting knowledge changed recently."
-        if "high_structural_importance" in codes:
-            return f"{title} matters now because it is a structural anchor in the current map."
-        if "cross_project_reuse" in codes:
-            return f"{title} matters now because it keeps showing up across multiple projects."
-        return f"{title} matters now because it is part of the current working map."
+        return self._focus_explanation_generator.build_focus_cluster_explanation(
+            profile_space_id=profile_space_id,
+            cluster=cluster,
+        ).to_dict()

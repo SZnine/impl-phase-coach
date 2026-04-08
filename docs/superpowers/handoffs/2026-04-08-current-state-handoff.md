@@ -6,55 +6,38 @@
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 最近已提交基线：`1626a28 feat: build knowledge map v1 slice`
-- 当前主线：`稳定性优先`
-- 当前工作区：已在知识地图 V1 基线上继续推进 explanation cache 改动
+- 最近已提交基线：`f05dece feat: cache focus explanations for knowledge map`
+- 当前工作区：在 `f05dece` 之上继续推进了 `阶段 32 / explanation generator 可替换策略层`，尚未提交
+- 当前主线：
+  1. 稳定性优先主线已经收出可用基线
+  2. 当前更活跃的是 `知识地图 V1 主线`
 
-## 2. 当前主线
+## 2. 当前知识地图主线结论
 
-当前不是继续横向扩页面，也不是优先做知识质量增强。当前已经冻结成两条并行但不混写的线：
+当前已经不是“有没有知识图页面”的问题，而是“知识地图是否已成为真实资产入口”的问题。
 
-1. `稳定性主线`
-   - durable facts
-   - session restore
-   - 真实使用回归
-2. `知识地图 V1 主线`
-   - 核心对象
-   - 最小读面
-   - 摘要页 -> 主图页
-   - 最小关系
-   - FocusCluster 稳定入口
-   - explanation cache
+已经冻结的核心判断：
 
-当前更活跃的是第 2 条线，但前提仍然是不能破坏稳定性基线。
+1. 这是一个以知识地图为核心索引层的个人工作台，不是一个附属图页
+2. 节点是混合节点，且 `foundation` 必须是一等节点
+3. 节点本体和用户状态必须分开：
+   - `KnowledgeNode`
+   - `UserNodeState`
+4. 证据锚点默认不进入主图，而作为附属证据层按需展开
+5. 知识地图入口是：
+   - `/knowledge` 摘要页
+   - `/knowledge/graph` 主图页
+6. 默认主图围绕 `FocusCluster` 展开，而不是围绕单个节点或全量图展开
+7. 当前 explanation 链已经明确：
+   - 先有 cache 宿主
+   - 再有可替换 generator
+   - 当前不接实时 LLM
 
-## 3. 已完成的稳定性能力
+## 3. 已完成的知识地图 V1 范围
 
-这些能力已经成立：
+### Task 1
 
-1. `stage mastery` 跨重开恢复
-2. `WorkspaceSession` 路径级恢复
-3. 非法 session 目标会被后端收正并分级回退
-4. `AnswerFact / AssessmentFact / DecisionFact` durable facts 已落地
-5. 长期集合默认真实持久化：
-   - `ProfileSpaceService.with_store(...)`
-   - `ProposalCenterService.with_store(...)`
-6. `submit_answer -> assessment -> stage summary refresh` 真实链路成立
-7. `ProposalsPage` 最小动作闭环成立：
-   - `accept`
-   - `reject`
-   - `defer`
-
-## 4. 已完成的知识地图 V1 范围
-
-### 4.1 核心模型与实现计划
-
-相关文档：
-
-- `docs/superpowers/plans/2026-04-08-knowledge-map-core-model.md`
-- `docs/superpowers/plans/2026-04-08-knowledge-map-v1-implementation.md`
-
-知识地图 V1 已冻结的核心对象顺序：
+已完成核心对象与 SQLite 宿主：
 
 1. `KnowledgeNode`
 2. `EvidenceRef`
@@ -62,27 +45,15 @@
 4. `KnowledgeRelation`
 5. `FocusCluster`
 
-公开关系最小集合：
-
-1. `supports`
-2. `depends_on`
-3. `abstracts`
-4. `causes_mistake`
-5. `evidenced_by`
-
-### 4.2 已完成的实现阶段
-
-#### Task 1
-
-已完成核心 domain 对象与 SQLite 宿主：
+关键文件：
 
 - `review_gate/domain.py`
 - `review_gate/storage_sqlite.py`
 - `tests/test_workbench_storage.py`
 
-#### Task 2
+### Task 2
 
-已完成 assessment 到以下对象的最小 durable 投影：
+已完成 `assessment -> durable knowledge objects` 的最小投影：
 
 1. `KnowledgeNode`
 2. `EvidenceRef`
@@ -93,7 +64,7 @@
 - `review_gate/profile_space_service.py`
 - `tests/test_profile_space_service.py`
 
-#### Task 3
+### Task 3
 
 已完成知识地图后端最小读面：
 
@@ -108,7 +79,7 @@
 - `tests/test_workspace_api.py`
 - `tests/test_http_api.py`
 
-#### Task 4
+### Task 4
 
 已完成知识地图前端最小入口：
 
@@ -125,220 +96,169 @@
 - `frontend/src/routes.tsx`
 - `frontend/src/components/WorkbenchLayout.tsx`
 
-#### Task 5
+### Task 5
 
-已完成 scope lock 与 regression 收口：
+已完成知识地图 V1 的 scope lock 与 regression 收口：
 
-1. 锁 `/api/knowledge` 不退化成证据堆
-2. 锁 `/api/knowledge/graph-main` 不把 evidence 当主图节点
-3. handoff 文档刷新
+1. 锁定 `/api/knowledge` 不退化成证据堆
+2. 锁定 `/api/knowledge/graph-main` 不把 evidence 当主图节点
+3. handoff 首次同步到知识地图 V1
 
-#### Task 6
+### Task 6
 
-已完成最小关系生成与 FocusCluster 稳定化：
+已完成最小关系生成与 `FocusCluster` 稳定化：
 
-1. 生成：
+1. 只生成：
    - `abstracts`
    - `causes_mistake`
 2. `FocusCluster` 从 assessment 粒度收成热点粒度
 3. cluster id 基于 `project + stage + hotspot slug` 稳定生成
 4. 重复 assessment 会复用已有 cluster，而不是每次新建
 
-关键文件：
+### Task 7
 
-- `review_gate/profile_space_service.py`
-- `tests/test_profile_space_service.py`
+已完成 `FocusExplanation` cache：
 
-#### 阶段 27
+1. 新对象：`FocusExplanation`
+2. explanation cache 有独立 SQLite 宿主
+3. `workspace_api` 已采用：
+   - `cache first`
+   - `fallback second`
+
+### 阶段 27
 
 已完成主图最小关系可视化闭环：
 
-1. 主图页能看见：
-   - `Center node`
-   - `Related nodes`
-   - `Connections`
-2. 关系以最小文本化方式显式出现
-3. 暂不进入复杂拓扑布局
+1. 主图能看到中心节点
+2. 主图能看到邻居节点
+3. 主图能看到连接关系和关系标签
 
-关键文件：
+当前仍是片区表达，不是真正拓扑布局。
 
-- `frontend/src/pages/KnowledgeGraphPage.tsx`
-- `frontend/src/read-pages.test.tsx`
+### 阶段 28
 
-#### 阶段 28
+已完成 `FocusCluster` 排序与摘要入口可读性收口：
 
-已完成 `FocusCluster` 与 summary explanation 可读性收口：
+1. 焦点簇顺序不再按写入顺序漂
+2. 摘要页已有 `Why it matters`
+3. reason codes 已进入可读 badge
 
-1. 焦点簇按稳定 reason priority 排序
-2. `Why it matters` 区块已经成立
-3. explanation 仍走静态信号，不走实时 LLM
+### 阶段 32
 
-关键文件：
+已完成 explanation generator 策略层拆分：
 
-- `review_gate/workspace_api.py`
-- `frontend/src/pages/KnowledgeMapPage.tsx`
-- `tests/test_workspace_api.py`
-- `frontend/src/read-pages.test.tsx`
+1. 新文件：`review_gate/explanation_generators.py`
+2. 新协议：`FocusExplanationGenerator`
+3. 默认实现：`DeterministicFocusExplanationGenerator`
+4. `ProfileSpaceService` 已支持通过 generator 注入 explanation 生成策略
 
-#### 阶段 30
+这意味着 explanation 现在已经明确分成三层：
 
-已完成 explanation 预生成缓存层的最小落地：
+1. `FocusExplanation`：缓存宿主
+2. `ExplanationGenerator`：生成策略
+3. `workspace_api`：只读 cache，不参与生成
 
-1. 新增 `FocusExplanation`
-2. `focus_explanation_store` 已有真实 SQLite 宿主
-3. `sync_from_assessment(...)` 会写入 deterministic explanation cache
-4. `workspace_api` 已改成：
-   - 优先读 explanation cache
-   - 无缓存时再走 cluster summary / fallback
+## 4. 当前仍然属于过渡态的部分
 
-关键文件：
+这些现在是诚实可用，但还不是长期目标实现：
 
-- `review_gate/domain.py`
-- `review_gate/storage_sqlite.py`
-- `review_gate/profile_space_service.py`
-- `review_gate/workspace_api.py`
-- `tests/test_workbench_storage.py`
-- `tests/test_profile_space_service.py`
-- `tests/test_workspace_api.py`
-
-## 5. 当前知识地图 V1 的真实边界
-
-当前已经成立的是：
-
-1. 知识地图入口先走摘要页，再进主图页
-2. 后端有独立 summary/main-view DTO
-3. assessment 已能投影成 durable knowledge objects
-4. assessment 已开始产出最小关系：
+1. `KnowledgeGraphPage` 仍然是片区式关系表达，不是真正拓扑布局
+2. `KnowledgeRelation` 目前只生成最小关系：
    - `abstracts`
    - `causes_mistake`
-5. `FocusCluster` 已经进入最小应用流，并具备基础稳定化
-6. 主图页已经能看见关系，而不只是节点卡片
-7. 摘要页已经能解释“为什么它现在重要”
-8. explanation 已经有独立缓存宿主，而不只是 `workspace_api` 临时文案
+3. `FocusCluster` 仍是用户侧最小对象，不是全局候选簇系统
+4. explanation 仍由 deterministic generator 生成，不是异步预生成 LLM explanation
+5. proposal 还没有正式升级成“知识网络治理中心”
 
-当前仍然属于过渡态的部分：
+## 5. 当前最重要的边界
 
-1. `KnowledgeRelation` 目前只生成极小集合，还没有更丰富的结构关系
-2. `FocusCluster` 仍然只是用户侧最小对象，不是全局候选簇系统
-3. `KnowledgeGraphPage` 仍是片区式表达，不是真正拓扑布局
-4. explanation 目前仍由 deterministic builder 生成，不是异步 LLM/agent 生成
-5. 旧的 `ProfileSpace` legacy 读面仍保留，未整体切到新对象读面
+后续接手时最容易混淆的是下面几组边界：
 
-## 6. 当前明确不做的内容
+1. `KnowledgeNode` vs `UserNodeState`
+   - 前者是知识本体
+   - 后者是当前用户与该节点的关系状态
 
-知识地图 V1 当前明确不做：
+2. `FocusCluster` vs `FocusExplanation`
+   - 前者回答“当前哪个片区值得看”
+   - 后者回答“为什么它现在重要”
 
-1. 全局候选焦点簇系统
-2. 复杂图编辑
-3. 节点批量治理
-4. 大规模自动合并
-5. 复杂图布局算法优化
-6. 高级筛选器系统
-7. 多用户知识图共享
-8. proposal center 的完整治理后台化
-9. 全量证据节点默认进入主图
-10. 实时 LLM 驱动的页面解释主链
+3. `Explanation cache` vs `Explanation generator`
+   - 前者是结果宿主
+   - 后者是策略实现
 
-## 7. 当前最重要的边界
+4. `deterministic default strategy` vs `future LLM/agent strategy`
+   - 当前用前者
+   - 但不把策略点写死
 
-后续接手时最容易混掉的是：
+## 6. 当前 agent / LLM 接入原则
 
-1. `ReviewFlowService`
-   - 负责题流事实
-2. `ProfileSpaceService`
-   - 负责长期知识资产
-3. `ProposalCenterService`
-   - 负责 proposal / action / execution
-4. `WorkspaceSession`
-   - 只负责“我上次停在哪”
-5. `KnowledgeNode`
-   - 负责稳定知识本体
-6. `UserNodeState`
-   - 负责当前用户与节点的关系状态
-7. `FocusCluster`
-   - 负责视图级知识片区组织对象
-8. `FocusExplanation`
-   - 负责“为什么它现在重要”的可缓存解释层
+当前已经冻结的原则：
 
-不要把：
+1. 当前先用 deterministic default strategy 落地
+2. 高语义推断点要集中成可替换策略接缝
+3. 不因为当前阶段就把未来需要灵活替换的策略硬写死
+4. 但也不因为未来可能接模型，就提前把当前实现过度复杂化
 
-- 用户状态塞进节点本体
-- 证据锚点塞进默认主图
-- 焦点簇写成临时页面算法结果
-- explanation 继续塞回 `workspace_api` 兜底逻辑
+一句话原则：
 
-## 8. 当前已冻结的 agent / LLM 接入原则
+`硬定事实，不硬定策略。`
 
-当前已经明确：
+也就是：
 
-1. 现在不因为阶段推进而提前接入真实 agent / LLM
-2. 也不因为“未来可能要接”而把当前实现过度框架化
-3. 当前执行原则是：
-   - `硬定事实，不硬定策略`
-   - deterministic default strategy 先落地
-   - 高语义推断点保留清晰接缝
+1. 硬定：
+   - 对象
+   - store
+   - DTO
+   - 审计边界
+   - 证据锚点
+2. 留活：
+   - explanation generator
+   - relation inference
+   - focus scoring
+   - 去重/重构建议
 
-后续如果出现这些情况，可以显式建议接入 agent / LLM：
+如果后续出现下面这些情况，就值得显式考虑接入真实 agent / LLM：
 
-1. 关系推断明显超过规则边界
+1. relation inference 的规则复杂度明显失控
 2. FocusCluster 聚合评分开始依赖高语义判断
-3. 去重 / 重命名 / 升降层建议开始出现高价值
-4. explanation generator 的规则链明显变脆
+3. explanation 文案 deterministic 方案开始明显脆弱
+4. 节点合并 / 重命名 / 升降层建议开始进入高价值阶段
 
-当前 API 已备好，所以到点时可以直接显式建议接入，不需要死守 deterministic。
+## 7. 当前验证状态
 
-## 9. 最近验证结果
+最近一轮和阶段 32 直接相关的验证结果：
 
-最新确认通过的关键回归：
+1. `python -m pytest tests/test_profile_space_service.py -q` -> `14 passed`
+2. `python -m pytest tests/test_workspace_api.py -q` -> `20 passed`
+3. `python -m pytest -q` -> `106 passed`
 
-1. `python -m pytest tests/test_profile_space_service.py -q` -> `12 passed`
-2. `python -m pytest tests/test_workspace_api.py tests/test_http_api.py -q` -> `36 passed`
-3. `python -m pytest -q` -> `104 passed`
-4. `npm --prefix frontend test -- src/read-pages.test.tsx` -> `15 passed`
-5. `npm --prefix frontend test` -> `34 passed`
-6. `npm --prefix frontend run build` -> `passed`
-7. `python -m pytest tests/test_workbench_storage.py::test_sqlite_store_round_trips_knowledge_map_objects -q` -> `1 passed`
-8. `python -m pytest tests/test_workspace_api.py -q` -> `20 passed`
+当前已知非阻塞项：
 
-另有真实试跑产物：
+1. `datetime.utcnow()` deprecation warning
+2. React Router v7 future flag warning
+3. `App.test.tsx` 里的 `act(...)` warning
 
-- `artifacts/workbench-live-trial/20260408-153730/summary.md`
-- `artifacts/workbench-live-trial/20260408-154900/summary.md`
+## 8. 当前下一步建议
 
-## 10. 当前已知非阻塞项
+当前最合理的下一步不是扩更多页面，而是继续在知识地图主线上做“策略点收口”或“价值表达增强”。
 
-1. React Router v7 future flag warning
-2. `App.test.tsx` 里仍有一个 `act(...)` warning
-3. `review_gate/domain.py` 里的 `datetime.utcnow()` 有 Python 3.14 deprecation warning
+推荐优先级：
 
-这些当前都不是主线阻塞项，不要优先扩修。
+1. 先做文档/基线同步后的 checkpoint
+2. 再决定是否进入：
+   - explanation generator 的下一层策略替换设计
+   - 或关系表达轻增强
 
-## 11. 当前阶段与下一步建议
+如果继续实现，我建议优先围绕：
 
-当前已经完成并冻结：
+1. `ExplanationGenerator` 的下一层策略设计
+2. 何时值得接入真实 LLM explanation generator
 
-- `阶段 30 / explanation 预生成缓存层`
+而不是现在就扩复杂图交互。
 
-当前最合理的下一步不是继续发散，而是先做一次阶段判断：
+## 9. 新对话启动 prompt
 
-1. 回到文档与 checkpoint 收口
-2. 或继续知识地图主线，进入更高价值的下一步
-
-如果继续知识地图主线，当前更合理的下一步优先级是：
-
-1. 继续增强主图表达，但保持轻量
-2. 或把 explanation generator 做成更明确的可替换策略层
-3. 不要直接跳复杂图交互、复杂治理、实时 LLM
-
-## 12. 新对话启动 Prompt
-
-如果需要在新对话中继续，建议先让新对话阅读：
-
-1. `docs/superpowers/handoffs/2026-04-08-current-state-handoff.md`
-2. `docs/superpowers/plans/2026-04-08-knowledge-map-core-model.md`
-3. `docs/superpowers/plans/2026-04-08-knowledge-map-v1-implementation.md`
-
-然后再给它这个起始提示：
+如果要在新对话里继续，可以直接给出下面这段：
 
 ```text
 请先阅读：
@@ -346,9 +266,23 @@
 2. docs/superpowers/plans/2026-04-08-knowledge-map-core-model.md
 3. docs/superpowers/plans/2026-04-08-knowledge-map-v1-implementation.md
 
-当前项目是 impl-phase-coach。当前主线仍然是“稳定性优先”，但知识地图 V1 已经完成 Task 1-6，以及阶段 27、28、30 的最小收口。请不要跨阶段扩写，先判断当前处于哪个阶段，再输出：
-- 当前阶段目标
-- 当前阶段产物
-- 当前阶段退出条件
-然后只继续当前最小闭环。
+当前基线：
+- 最近已提交基线：f05dece feat: cache focus explanations for knowledge map
+- 当前工作区已经继续推进到“阶段 32 / explanation generator 可替换策略层”，但还未提交
+
+请按 impl-phase-coach 方式继续：
+1. 先判断当前阶段
+2. 先给出当前阶段目标/产物/退出条件
+3. 不跨阶段
+4. 默认提供：
+   A. 我自己补充
+   B. 你直接补充
+
+当前最重要的边界：
+- KnowledgeNode vs UserNodeState
+- FocusCluster vs FocusExplanation
+- explanation cache vs explanation generator
+- deterministic default strategy vs future LLM/agent strategy
+
+当前重点不是扩新页面，而是继续知识地图主线的策略层与价值表达收口。
 ```

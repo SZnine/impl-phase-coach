@@ -600,6 +600,48 @@ Expected: PASS.
 
 ---
 
+### Task 8: Extract A Replaceable Explanation Generator Strategy
+
+**Files:**
+- Add: `review_gate/explanation_generators.py`
+- Modify: `review_gate/profile_space_service.py`
+- Test: `tests/test_profile_space_service.py`
+
+- [ ] **Step 1: Introduce a minimal generator protocol**
+
+Add a small strategy boundary:
+1. `FocusExplanationGenerator`
+2. `DeterministicFocusExplanationGenerator`
+
+The generator must produce a `FocusExplanation`, not raw strings.
+
+- [ ] **Step 2: Move deterministic explanation building behind the strategy**
+
+`ProfileSpaceService` should no longer own explanation phrasing directly.
+Instead it should:
+1. accept a generator dependency
+2. call the generator when writing explanation cache
+3. keep the cache/store path unchanged
+
+- [ ] **Step 3: Keep read behavior unchanged**
+
+This task must not change:
+1. `workspace_api` cache-first behavior
+2. DTO shape
+3. frontend page reads
+
+The point is strategy replacement, not API replacement.
+
+- [ ] **Step 4: Re-run focused backend tests**
+
+Run:
+- `python -m pytest tests/test_profile_space_service.py -q`
+- `python -m pytest tests/test_workspace_api.py -q`
+
+Expected: PASS.
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**
@@ -611,13 +653,14 @@ Expected: PASS.
 - Covers the agreed first-entry flow: summary page first, graph main view second.
 - Keeps evidence anchors out of the default main graph surface.
 - Keeps LLM governance, merge execution, complex editing, and global cluster templates out of scope.
+- Separates explanation cache hosting from explanation generation strategy without introducing realtime LLM dependency.
 
 **2. Placeholder scan:**
 - No `TODO` / `TBD` placeholders remain.
 - Every task has exact files, tests, commands, and implementation direction.
 
 **3. Type consistency:**
-- The plan consistently uses `KnowledgeNode`, `EvidenceRef`, `UserNodeState`, `KnowledgeRelation`, `FocusCluster`, `FocusExplanation`, `KnowledgeMapSummaryViewDTO`, and `KnowledgeGraphMainViewDTO` across all tasks.
+- The plan consistently uses `KnowledgeNode`, `EvidenceRef`, `UserNodeState`, `KnowledgeRelation`, `FocusCluster`, `FocusExplanation`, `FocusExplanationGenerator`, `KnowledgeMapSummaryViewDTO`, and `KnowledgeGraphMainViewDTO` across all tasks.
 
 ## Execution Handoff
 

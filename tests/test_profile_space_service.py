@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from review_gate.domain import FocusExplanation
+from review_gate.explanation_generators import DeterministicFocusExplanationGenerator
 from review_gate.profile_space_service import ProfileSpaceService
 from review_gate.storage_sqlite import SQLiteStore
 
@@ -303,3 +305,64 @@ def test_sync_from_assessment_writes_focus_explanation_cache() -> None:
     assert explanation["subject_id"] == result["focus_cluster_ids"][0]
     assert explanation["generated_by"] == "deterministic"
     assert "Decision awareness" in explanation["summary"]
+
+
+def test_deterministic_focus_explanation_generator_returns_focus_explanation() -> None:
+    generator = DeterministicFocusExplanationGenerator()
+
+    explanation = generator.build_focus_cluster_explanation(
+        profile_space_id="profile-space:proj-1",
+        cluster={
+            "cluster_id": "proj-1:stage-1:focus:decision-awareness",
+            "title": "Decision awareness hotspot",
+            "focus_reason_codes": ["current_project_hit", "weak_signal_active"],
+        },
+    )
+
+    assert isinstance(explanation, FocusExplanation)
+    assert explanation.subject_type == "focus_cluster"
+    assert explanation.subject_id == "proj-1:stage-1:focus:decision-awareness"
+    assert explanation.generated_by == "deterministic"
+    assert "Decision awareness" in explanation.summary
+
+
+def test_sync_from_assessment_delegates_explanation_generation_to_generator() -> None:
+    class StubFocusExplanationGenerator:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def build_focus_cluster_explanation(self, *, profile_space_id: str, cluster: dict) -> FocusExplanation:
+            self.calls.append({"profile_space_id": profile_space_id, "cluster": dict(cluster)})
+            return FocusExplanation(
+                explanation_id=f"focus_cluster:{cluster['cluster_id']}",
+                profile_space_id=profile_space_id,
+                subject_type="focus_cluster",
+                subject_id=cluster["cluster_id"],
+                reason_codes=list(cluster.get("focus_reason_codes", [])),
+                summary="Stub explanation wins.",
+                generated_by="stub",
+                generated_at="2026-04-08T16:30:00Z",
+                version="v1",
+            )
+
+    generator = StubFocusExplanationGenerator()
+    service = ProfileSpaceService(generator=generator)
+
+    result = service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-6",
+            "verdict": "partial",
+            "core_gaps": ["Encoding boundary"],
+            "misconceptions": [],
+            "confidence": 0.73,
+        },
+    )
+
+    explanation = service.get_focus_explanation("focus_cluster", result["focus_cluster_ids"][0], project_id="proj-1")
+
+    assert len(generator.calls) == 1
+    assert explanation is not None
+    assert explanation["summary"] == "Stub explanation wins."
+    assert explanation["generated_by"] == "stub"
