@@ -74,6 +74,12 @@ def _coerce_int(value: Any, default: int = 0) -> int:
         return default
     return int(value)
 
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    return float(value)
+
+
 
 @dataclass(slots=True)
 class JsonSerializable:
@@ -114,6 +120,102 @@ class WorkspaceSession(JsonSerializable):
             active_proposal_center_id=_coerce_optional_str(payload.get("active_proposal_center_id")),
             last_opened_at=_coerce_str(payload.get("last_opened_at"), ""),
             filters=_coerce_str_dict(payload.get("filters")),
+        )
+
+
+@dataclass(slots=True)
+class AnswerFact(JsonSerializable):
+    answer_id: str
+    request_id: str
+    project_id: str
+    stage_id: str
+    question_set_id: str
+    question_id: str
+    actor_id: str
+    source_page: str
+    created_at: str
+    answer_text: str
+    draft_id: str | None = None
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            answer_id=_coerce_str(payload["answer_id"]),
+            request_id=_coerce_str(payload["request_id"]),
+            project_id=_coerce_str(payload["project_id"]),
+            stage_id=_coerce_str(payload["stage_id"]),
+            question_set_id=_coerce_str(payload["question_set_id"]),
+            question_id=_coerce_str(payload["question_id"]),
+            actor_id=_coerce_str(payload["actor_id"]),
+            source_page=_coerce_str(payload["source_page"]),
+            created_at=_coerce_str(payload["created_at"]),
+            answer_text=_coerce_str(payload["answer_text"]),
+            draft_id=_coerce_optional_str(payload.get("draft_id")),
+        )
+
+
+@dataclass(slots=True)
+class AssessmentFact(JsonSerializable):
+    assessment_id: str
+    request_id: str
+    answer_id: str
+    project_id: str
+    stage_id: str
+    question_set_id: str
+    question_id: str
+    verdict: str
+    score_total: float
+    dimension_scores: dict[str, int]
+    core_gaps: list[str]
+    misconceptions: list[str]
+    confidence: float
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        dimension_scores_payload = payload.get("dimension_scores")
+        if not isinstance(dimension_scores_payload, dict):
+            dimension_scores_payload = {}
+        return cls(
+            assessment_id=_coerce_str(payload["assessment_id"]),
+            request_id=_coerce_str(payload["request_id"]),
+            answer_id=_coerce_str(payload["answer_id"]),
+            project_id=_coerce_str(payload["project_id"]),
+            stage_id=_coerce_str(payload["stage_id"]),
+            question_set_id=_coerce_str(payload["question_set_id"]),
+            question_id=_coerce_str(payload["question_id"]),
+            verdict=_coerce_str(payload["verdict"]),
+            score_total=_coerce_float(payload.get("score_total"), 0.0),
+            dimension_scores={str(key): _coerce_int(value, 0) for key, value in dimension_scores_payload.items()},
+            core_gaps=_coerce_str_list(payload.get("core_gaps")),
+            misconceptions=_coerce_str_list(payload.get("misconceptions")),
+            confidence=_coerce_float(payload.get("confidence"), 0.0),
+        )
+
+
+@dataclass(slots=True)
+class DecisionFact(JsonSerializable):
+    decision_id: str
+    request_id: str
+    assessment_id: str
+    project_id: str
+    stage_id: str
+    decision_type: str
+    decision_value: str
+    reason_summary: str
+    created_at: str
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            decision_id=_coerce_str(payload["decision_id"]),
+            request_id=_coerce_str(payload["request_id"]),
+            assessment_id=_coerce_str(payload["assessment_id"]),
+            project_id=_coerce_str(payload["project_id"]),
+            stage_id=_coerce_str(payload["stage_id"]),
+            decision_type=_coerce_str(payload["decision_type"]),
+            decision_value=_coerce_str(payload["decision_value"]),
+            reason_summary=_coerce_str(payload["reason_summary"]),
+            created_at=_coerce_str(payload["created_at"]),
         )
 
 
@@ -267,3 +369,7 @@ class WorkspaceEvent(JsonSerializable):
 
 def current_utc_timestamp() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+
+

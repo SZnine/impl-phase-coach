@@ -1,5 +1,7 @@
-﻿from review_gate.action_dtos import SubmitAnswerRequest
+from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.review_flow_service import ReviewFlowService
+from review_gate.storage_sqlite import SQLiteStore
+from pathlib import Path
 
 
 class CapturingAssessmentClient:
@@ -150,6 +152,36 @@ def test_submit_answer_does_not_promote_mastery_on_weak_assessment() -> None:
     assert service.get_stage_view("proj-1", "stage-1").mastery_status == "unverified"
 
 
+
+def test_submit_answer_persists_facts_and_recovers_mastery_after_restart(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite3"
+    store = SQLiteStore(db_path)
+    store.initialize()
+    first_service = ReviewFlowService(assessment_client=CapturingAssessmentClient.for_testing(), store=store)
+
+    submit_response = first_service.submit_answer(
+        SubmitAnswerRequest(
+            request_id="req-persist-1",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-08T12:00:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="This answer is long enough to avoid the weak fallback verdict.",
+            draft_id=None,
+        )
+    )
+
+    assert submit_response.success is True
+    assert first_service.get_latest_assessment_snapshot("proj-1", "stage-1") is not None
+
+    second_service = ReviewFlowService.with_store(SQLiteStore(db_path))
+    stage_view = second_service.get_stage_view("proj-1", "stage-1")
+
+    assert stage_view.mastery_status == "partially_verified"
+    assert second_service.get_latest_assessment_snapshot("proj-1", "stage-1") is not None
 def test_submit_answer_rejects_blank_answer_text() -> None:
     service = ReviewFlowService.for_testing()
 
@@ -171,3 +203,6 @@ def test_submit_answer_rejects_blank_answer_text() -> None:
     assert response.success is False
     assert response.result_type == "invalid_input"
     assert response.assessment_summary is None
+
+
+

@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 
 from review_gate.domain import (
+    AnswerFact,
+    AssessmentFact,
+    DecisionFact,
     ProfileSpace,
     ProjectReview,
     ProposalCenter,
@@ -175,6 +178,62 @@ def test_sqlite_store_rejects_duplicate_event_ids_without_overwriting(
 
     assert store.get_event("event-1") == first_event
     assert store.list_events("proj-1") == [first_event]
+
+def test_sqlite_store_round_trips_durable_facts(tmp_path: Path) -> None:
+    db_path = tmp_path / "review.sqlite3"
+    store = SQLiteStore(db_path)
+    store.initialize()
+
+    answer = AnswerFact(
+        answer_id="answer-1",
+        request_id="req-1",
+        project_id="proj-1",
+        stage_id="stage-1",
+        question_set_id="set-1",
+        question_id="q-1",
+        actor_id="local-user",
+        source_page="question_detail",
+        created_at="2026-04-08T12:00:00Z",
+        answer_text="The boundary is stable.",
+        draft_id=None,
+    )
+    assessment = AssessmentFact(
+        assessment_id="assessment-1",
+        request_id="req-1",
+        answer_id="answer-1",
+        project_id="proj-1",
+        stage_id="stage-1",
+        question_set_id="set-1",
+        question_id="q-1",
+        verdict="partial",
+        score_total=0.72,
+        dimension_scores={"correctness": 3},
+        core_gaps=["Decision awareness"],
+        misconceptions=[],
+        confidence=0.8,
+    )
+    decision = DecisionFact(
+        decision_id="decision-1",
+        request_id="req-1",
+        assessment_id="assessment-1",
+        project_id="proj-1",
+        stage_id="stage-1",
+        decision_type="stage_mastery",
+        decision_value="partially_verified",
+        reason_summary="partial verdict promotes stage mastery",
+        created_at="2026-04-08T12:00:01Z",
+    )
+
+    store.upsert_answer_fact(answer)
+    store.upsert_assessment_fact(assessment)
+    store.upsert_decision_fact(decision)
+
+    assert store.get_answer_fact("answer-1") == answer
+    assert store.get_assessment_fact("assessment-1") == assessment
+    assert store.get_decision_fact("decision-1") == decision
+    assert store.list_answer_facts("proj-1", "stage-1") == [answer]
+    assert store.list_assessment_facts("proj-1", "stage-1") == [assessment]
+    assert store.list_decision_facts("proj-1", "stage-1") == [decision]
 
 
 def test_sqlite_store_round_trips_profile_space_entries(
@@ -438,3 +497,18 @@ def test_workspace_state_store_round_trips_session(tmp_path: Path) -> None:
     assert loaded.active_project_id == "proj-1"
     assert loaded.active_question_id == "q-1"
     assert loaded.filters == {"status": "in_progress"}
+    assert set(loaded.to_dict().keys()) == {
+        "workspace_session_id",
+        "active_project_id",
+        "active_stage_id",
+        "active_panel",
+        "active_question_set_id",
+        "active_question_id",
+        "active_profile_space_id",
+        "active_proposal_center_id",
+        "last_opened_at",
+        "filters",
+    }
+
+
+

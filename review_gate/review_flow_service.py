@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.agent_clients import AssessmentAgentClient, QuestionGenerationAgentClient
-from review_gate.domain import ProjectReview, StageReview
+from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, StageReview
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
     AssessmentSummaryDTO,
@@ -287,11 +287,19 @@ class ReviewFlowService:
     def _get_stage_mastery_status(self, project_id: str, stage_id: str) -> str:
         if self._store is None:
             return self._stage_mastery_status.get((project_id, stage_id), "unverified")
+
+        decisions = [
+            item
+            for item in self._store.list_decision_facts(project_id=project_id, stage_id=stage_id)
+            if item.decision_type == "stage_mastery"
+        ]
+        if decisions:
+            return decisions[-1].decision_value
+
         stage_review = self._get_stage_review(project_id, stage_id)
         if stage_review is None:
             return "unverified"
         return stage_review.mastery_status
-
     def _set_stage_mastery_status(self, project_id: str, stage_id: str, mastery_status: str) -> None:
         if self._store is None:
             self._stage_mastery_status[(project_id, stage_id)] = mastery_status
@@ -308,7 +316,16 @@ class ReviewFlowService:
 
     def get_latest_assessment_snapshot(self, project_id: str, stage_id: str) -> dict | None:
         snapshot = self._latest_assessments.get((project_id, stage_id))
-        return dict(snapshot) if snapshot is not None else None
+        if snapshot is not None:
+            return dict(snapshot)
+
+        if self._store is None:
+            return None
+
+        assessments = self._store.list_assessment_facts(project_id=project_id, stage_id=stage_id)
+        if not assessments:
+            return None
+        return assessments[-1].to_dict()
 
     def submit_answer(self, request: SubmitAnswerRequest) -> SubmitAnswerResponseDTO:
         if not request.answer_text.strip():
@@ -323,6 +340,7 @@ class ReviewFlowService:
             )
 
         current_question = self._build_current_question_context(request)
+        answer_id = f"answer-{request.request_id}"
         assessment_response = self._assessment_client.assess(
             {
                 "request_id": request.request_id,
@@ -347,10 +365,54 @@ class ReviewFlowService:
         verdict = assessment.get("verdict", "partial")
         answer_excerpt = request.answer_text.strip()[:120]
         assessment_id = f"assessment-{request.request_id}"
-        assessment["assessment_id"] = assessment_id
+        assessment.update(
+            {
+                "assessment_id": assessment_id,
+                "request_id": request.request_id,
+                "answer_id": answer_id,
+                "project_id": request.project_id,
+                "stage_id": request.stage_id,
+                "question_set_id": request.question_set_id,
+                "question_id": request.question_id,
+                "confidence": float(assessment_response.get("confidence", 0.0)),
+            }
+        )
         self._latest_assessments[(request.project_id, request.stage_id)] = assessment
+
+        if self._store is not None:
+            self._store.upsert_answer_fact(
+                AnswerFact(
+                    answer_id=answer_id,
+                    request_id=request.request_id,
+                    project_id=request.project_id,
+                    stage_id=request.stage_id,
+                    question_set_id=request.question_set_id,
+                    question_id=request.question_id,
+                    actor_id=request.actor_id,
+                    source_page=request.source_page,
+                    created_at=request.created_at,
+                    answer_text=request.answer_text,
+                    draft_id=request.draft_id,
+                )
+            )
+            self._store.upsert_assessment_fact(AssessmentFact.from_dict(assessment))
+
         if verdict in {"partial", "strong"}:
             self._set_stage_mastery_status(request.project_id, request.stage_id, "partially_verified")
+            if self._store is not None:
+                self._store.upsert_decision_fact(
+                    DecisionFact(
+                        decision_id=f"decision-{request.request_id}",
+                        request_id=request.request_id,
+                        assessment_id=assessment_id,
+                        project_id=request.project_id,
+                        stage_id=request.stage_id,
+                        decision_type="stage_mastery",
+                        decision_value="partially_verified",
+                        reason_summary=f"stage mastery promoted from {verdict} verdict",
+                        created_at=request.created_at,
+                    )
+                )
 
         assessment_summary = AssessmentSummaryDTO(
             assessment_id=assessment_id,
@@ -368,4 +430,6 @@ class ReviewFlowService:
             message=f"Assessment created with verdict {verdict}.",
             refresh_targets=["question_detail", "stage_summary"],
             assessment_summary=assessment_summary,
+
         )
+

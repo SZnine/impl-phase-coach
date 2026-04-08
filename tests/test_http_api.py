@@ -391,8 +391,13 @@ def test_create_default_workspace_api_persists_stage_mastery_between_instances(t
 
     assert response.success is True
     api_reader = create_default_workspace_api(db_path)
+    stage_view = api_reader.get_stage_view("proj-1", "stage-1")
 
-    assert api_reader.get_stage_view("proj-1", "stage-1").mastery_status == "partially_verified"
+    assert stage_view.mastery_status == "partially_verified"
+    assert stage_view.knowledge_summary is not None
+    assert stage_view.knowledge_summary.knowledge_entry_count == 1
+    assert stage_view.knowledge_summary.mistake_count == 1
+    assert stage_view.knowledge_summary.latest_summary == "synced partial assessment with 1 knowledge entries and 1 mistakes"
 
 
 def test_http_api_round_trips_workspace_session_between_instances(tmp_path: Path) -> None:
@@ -425,3 +430,4 @@ def test_http_api_round_trips_workspace_session_between_instances(tmp_path: Path
     assert load_response.json()["active_stage_id"] == "stage-1"
     assert load_response.json()["active_question_set_id"] == "set-1"
     assert load_response.json()["active_question_id"] == "set-1-q-2"
+

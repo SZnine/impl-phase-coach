@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import sqlite3
@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from review_gate.domain import (
+    AnswerFact,
+    AssessmentFact,
+    DecisionFact,
     ProfileSpace,
     ProjectReview,
     ProposalCenter,
@@ -88,6 +91,51 @@ class SQLiteStore:
 
                 CREATE INDEX IF NOT EXISTS idx_question_set_store_stage_review_id
                     ON question_set_store(stage_review_id);
+
+                CREATE TABLE IF NOT EXISTS answer_fact_store (
+                    answer_id TEXT PRIMARY KEY,
+                    request_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    question_set_id TEXT NOT NULL,
+                    question_id TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    source_page TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_answer_fact_store_project_stage
+                    ON answer_fact_store(project_id, stage_id);
+
+                CREATE TABLE IF NOT EXISTS assessment_fact_store (
+                    assessment_id TEXT PRIMARY KEY,
+                    request_id TEXT NOT NULL,
+                    answer_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    question_set_id TEXT NOT NULL,
+                    question_id TEXT NOT NULL,
+                    verdict TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_assessment_fact_store_project_stage
+                    ON assessment_fact_store(project_id, stage_id);
+
+                CREATE TABLE IF NOT EXISTS decision_fact_store (
+                    decision_id TEXT PRIMARY KEY,
+                    request_id TEXT NOT NULL,
+                    assessment_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    decision_type TEXT NOT NULL,
+                    decision_value TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_decision_fact_store_project_stage
+                    ON decision_fact_store(project_id, stage_id);
 
                 CREATE TABLE IF NOT EXISTS proposal_center_store (
                     proposal_center_id TEXT PRIMARY KEY,
@@ -359,6 +407,177 @@ class SQLiteStore:
             return None
         return QuestionSet.from_json(row["payload"])
 
+    def upsert_answer_fact(self, fact: AnswerFact) -> None:
+        payload = fact.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO answer_fact_store (
+                    answer_id,
+                    request_id,
+                    project_id,
+                    stage_id,
+                    question_set_id,
+                    question_id,
+                    actor_id,
+                    source_page,
+                    created_at,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fact.answer_id,
+                    fact.request_id,
+                    fact.project_id,
+                    fact.stage_id,
+                    fact.question_set_id,
+                    fact.question_id,
+                    fact.actor_id,
+                    fact.source_page,
+                    fact.created_at,
+                    payload,
+                ),
+            )
+
+    def get_answer_fact(self, answer_id: str) -> AnswerFact | None:
+        row = self._fetch_one(
+            "SELECT payload FROM answer_fact_store WHERE answer_id = ?",
+            (answer_id,),
+        )
+        if row is None:
+            return None
+        return AnswerFact.from_json(row["payload"])
+
+    def list_answer_facts(self, project_id: str | None = None, stage_id: str | None = None) -> list[AnswerFact]:
+        if project_id is None and stage_id is None:
+            rows = self._fetch_all(
+                "SELECT payload FROM answer_fact_store ORDER BY created_at, answer_id",
+                (),
+            )
+        elif stage_id is None:
+            rows = self._fetch_all(
+                "SELECT payload FROM answer_fact_store WHERE project_id = ? ORDER BY created_at, answer_id",
+                (project_id,),
+            )
+        else:
+            rows = self._fetch_all(
+                "SELECT payload FROM answer_fact_store WHERE project_id = ? AND stage_id = ? ORDER BY created_at, answer_id",
+                (project_id, stage_id),
+            )
+        return [AnswerFact.from_json(row["payload"]) for row in rows]
+
+    def upsert_assessment_fact(self, fact: AssessmentFact) -> None:
+        payload = fact.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO assessment_fact_store (
+                    assessment_id,
+                    request_id,
+                    answer_id,
+                    project_id,
+                    stage_id,
+                    question_set_id,
+                    question_id,
+                    verdict,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fact.assessment_id,
+                    fact.request_id,
+                    fact.answer_id,
+                    fact.project_id,
+                    fact.stage_id,
+                    fact.question_set_id,
+                    fact.question_id,
+                    fact.verdict,
+                    payload,
+                ),
+            )
+
+    def get_assessment_fact(self, assessment_id: str) -> AssessmentFact | None:
+        row = self._fetch_one(
+            "SELECT payload FROM assessment_fact_store WHERE assessment_id = ?",
+            (assessment_id,),
+        )
+        if row is None:
+            return None
+        return AssessmentFact.from_json(row["payload"])
+
+    def list_assessment_facts(self, project_id: str | None = None, stage_id: str | None = None) -> list[AssessmentFact]:
+        if project_id is None and stage_id is None:
+            rows = self._fetch_all(
+                "SELECT payload FROM assessment_fact_store ORDER BY assessment_id",
+                (),
+            )
+        elif stage_id is None:
+            rows = self._fetch_all(
+                "SELECT payload FROM assessment_fact_store WHERE project_id = ? ORDER BY assessment_id",
+                (project_id,),
+            )
+        else:
+            rows = self._fetch_all(
+                "SELECT payload FROM assessment_fact_store WHERE project_id = ? AND stage_id = ? ORDER BY assessment_id",
+                (project_id, stage_id),
+            )
+        return [AssessmentFact.from_json(row["payload"]) for row in rows]
+    def upsert_decision_fact(self, fact: DecisionFact) -> None:
+        payload = fact.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO decision_fact_store (
+                    decision_id,
+                    request_id,
+                    assessment_id,
+                    project_id,
+                    stage_id,
+                    decision_type,
+                    decision_value,
+                    created_at,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fact.decision_id,
+                    fact.request_id,
+                    fact.assessment_id,
+                    fact.project_id,
+                    fact.stage_id,
+                    fact.decision_type,
+                    fact.decision_value,
+                    fact.created_at,
+                    payload,
+                ),
+            )
+
+    def get_decision_fact(self, decision_id: str) -> DecisionFact | None:
+        row = self._fetch_one(
+            "SELECT payload FROM decision_fact_store WHERE decision_id = ?",
+            (decision_id,),
+        )
+        if row is None:
+            return None
+        return DecisionFact.from_json(row["payload"])
+
+    def list_decision_facts(self, project_id: str | None = None, stage_id: str | None = None) -> list[DecisionFact]:
+        if project_id is None and stage_id is None:
+            rows = self._fetch_all(
+                "SELECT payload FROM decision_fact_store ORDER BY created_at, decision_id",
+                (),
+            )
+        elif stage_id is None:
+            rows = self._fetch_all(
+                "SELECT payload FROM decision_fact_store WHERE project_id = ? ORDER BY created_at, decision_id",
+                (project_id,),
+            )
+        else:
+            rows = self._fetch_all(
+                "SELECT payload FROM decision_fact_store WHERE project_id = ? AND stage_id = ? ORDER BY created_at, decision_id",
+                (project_id, stage_id),
+            )
+        return [DecisionFact.from_json(row["payload"]) for row in rows]
     def upsert_proposal_center(self, proposal_center: ProposalCenter) -> None:
         payload = proposal_center.to_json()
         with self._connect() as conn:
@@ -599,3 +818,10 @@ class SQLiteStore:
         if isinstance(value, dict):
             return {str(key): item for key, item in value.items()}
         return {}
+
+
+
+
+
+
+
