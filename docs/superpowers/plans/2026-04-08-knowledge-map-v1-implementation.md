@@ -668,6 +668,43 @@ In other words:
 
 ---
 
+### Task 9: Add High-Confidence Supports Relations
+
+**Files:**
+- Modify: `review_gate/profile_space_service.py`
+- Test: `tests/test_profile_space_service.py`
+- Regression: `tests/test_workspace_api.py`
+- Regression: `tests/test_http_api.py`
+
+- [ ] **Step 1: Lock supports generation behind explicit support signals**
+
+Do not infer `supports` from raw co-occurrence.
+
+Only generate `supports` when an assessment carries explicit `support_signals`.
+
+- [ ] **Step 2: Restrict supports to the first high-confidence set**
+
+Only allow:
+1. `foundation -> concept`
+2. `foundation -> method`
+3. `concept -> decision`
+
+Do not expand to `depends_on`, multi-hop supports, or LLM relation generation in this task.
+
+- [ ] **Step 3: Keep relation ids stable and idempotent**
+
+Repeated assessments for the same support pair should reuse a stable `supports` relation id instead of creating duplicates.
+
+- [ ] **Step 4: Re-run focused regressions**
+
+Run:
+- `python -m pytest tests/test_profile_space_service.py -q`
+- `python -m pytest tests/test_workspace_api.py tests/test_http_api.py -q`
+
+Expected: PASS.
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**
@@ -680,6 +717,7 @@ In other words:
 - Keeps evidence anchors out of the default main graph surface.
 - Keeps LLM governance, merge execution, complex editing, and global cluster templates out of scope.
 - Separates explanation cache hosting from explanation generation strategy without introducing realtime LLM dependency.
+- Adds a minimal high-confidence `supports` slice without expanding into broad semantic relation inference.
 
 **2. Placeholder scan:**
 - No `TODO` / `TBD` placeholders remain.

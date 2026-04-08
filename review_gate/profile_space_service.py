@@ -46,6 +46,13 @@ class ProfileSpaceService:
         verdict = str(assessment.get("verdict", "unknown"))
         core_gaps = [str(item).strip() for item in assessment.get("core_gaps", []) if str(item).strip()]
         misconceptions = [str(item).strip() for item in assessment.get("misconceptions", []) if str(item).strip()]
+        support_signals = [
+            item
+            for item in assessment.get("support_signals", [])
+            if isinstance(item, dict)
+            and str(item.get("source_label", "")).strip()
+            and str(item.get("target_label", "")).strip()
+        ]
         has_meaningful_signal = bool(core_gaps or misconceptions)
         confidence = float(assessment.get("confidence", 0.0) or 0.0)
         profile_space_id = self._profile_space_id(project_id)
@@ -100,6 +107,63 @@ class ProfileSpaceService:
         focus_cluster_ids: list[str] = []
         focus_clusters: list[dict] = []
         focus_explanations: list[dict] = []
+
+        def append_map_node(
+            *,
+            node_id: str,
+            label: str,
+            node_type: str,
+            abstract_level: str,
+            scope: str,
+            canonical_summary: str,
+        ) -> None:
+            map_nodes.append(
+                KnowledgeNode(
+                    node_id=node_id,
+                    profile_space_id=profile_space_id,
+                    label=label,
+                    node_type=node_type,
+                    abstract_level=abstract_level,
+                    scope=scope,
+                    canonical_summary=canonical_summary,
+                    source_refs=[assessment_id],
+                    seed_or_generated="generated",
+                    status="active",
+                ).to_dict()
+            )
+            knowledge_node_ids.append(node_id)
+
+        def append_evidence_ref(*, evidence_id: str, node_id: str, summary: str) -> None:
+            evidence_refs.append(
+                {
+                    "evidence_id": evidence_id,
+                    "profile_space_id": profile_space_id,
+                    "node_id": node_id,
+                    "evidence_type": "assessment",
+                    "ref_id": assessment_id,
+                    "project_id": project_id,
+                    "stage_id": stage_id,
+                    "summary": summary,
+                }
+            )
+            evidence_ids.append(evidence_id)
+
+        def append_user_node_state(*, node_id: str, review_needed: bool | None = None) -> None:
+            user_node_states.append(
+                {
+                    "profile_space_id": profile_space_id,
+                    "node_id": node_id,
+                    "activation_status": "active",
+                    "mastery_status": verdict,
+                    "review_needed": verdict != "strong" if review_needed is None else review_needed,
+                    "weak_signal_count": len(core_gaps) + len(misconceptions),
+                    "linked_project_count": 1,
+                    "last_seen_at": current_utc_timestamp(),
+                    "confidence": confidence,
+                }
+            )
+            user_node_state_ids.append(f"{profile_space_id}:{node_id}")
+
         if has_meaningful_signal:
             node_label = core_gaps[0] if core_gaps else (misconceptions[0] if misconceptions else verdict)
             node_id = f"{project_id}:{stage_id}:{assessment_id}:node-1"
@@ -162,49 +226,23 @@ class ProfileSpaceService:
             stable_center_node_id = node_id
             if core_gaps:
                 stable_center_node_id = self._stable_node_id(profile_space_id, "knowledge", core_gaps[0])
-                stable_node = KnowledgeNode(
+                append_map_node(
                     node_id=stable_center_node_id,
-                    profile_space_id=profile_space_id,
                     label=core_gaps[0],
                     node_type="decision",
                     abstract_level="L2",
                     scope="project-bound",
                     canonical_summary=f"Stable knowledge area for {core_gaps[0]}.",
-                    source_refs=[assessment_id],
-                    seed_or_generated="generated",
-                    status="active",
-                ).to_dict()
-                map_nodes.append(stable_node)
-                knowledge_node_ids.append(stable_center_node_id)
+                )
 
                 stable_evidence_id = f"{project_id}:{stage_id}:{assessment_id}:evidence-2"
-                evidence_refs.append(
-                    {
-                        "evidence_id": stable_evidence_id,
-                        "profile_space_id": profile_space_id,
-                        "node_id": stable_center_node_id,
-                        "evidence_type": "assessment",
-                        "ref_id": assessment_id,
-                        "project_id": project_id,
-                        "stage_id": stage_id,
-                        "summary": f"{verdict} assessment reinforced {core_gaps[0]}.",
-                    }
+                append_evidence_ref(
+                    evidence_id=stable_evidence_id,
+                    node_id=stable_center_node_id,
+                    summary=f"{verdict} assessment reinforced {core_gaps[0]}.",
                 )
-                evidence_ids.append(stable_evidence_id)
 
-                stable_state = {
-                    "profile_space_id": profile_space_id,
-                    "node_id": stable_center_node_id,
-                    "activation_status": "active",
-                    "mastery_status": verdict,
-                    "review_needed": verdict != "strong",
-                    "weak_signal_count": len(core_gaps) + len(misconceptions),
-                    "linked_project_count": 1,
-                    "last_seen_at": current_utc_timestamp(),
-                    "confidence": confidence,
-                }
-                user_node_states.append(stable_state)
-                user_node_state_ids.append(f"{profile_space_id}:{stable_center_node_id}")
+                append_user_node_state(node_id=stable_center_node_id)
 
                 abstracts_relation_id = f"{project_id}:{stage_id}:{self._slugify(core_gaps[0])}:abstracts:{assessment_id}"
                 relations.append(
@@ -286,6 +324,69 @@ class ProfileSpaceService:
                     }
                 )
                 relation_ids.append(causes_relation_id)
+
+            for index, signal in enumerate(support_signals, start=1):
+                source_label = str(signal.get("source_label", "")).strip()
+                target_label = str(signal.get("target_label", "")).strip()
+                source_node_type = str(signal.get("source_node_type", "")).strip().lower()
+                target_node_type = str(signal.get("target_node_type", "")).strip().lower()
+                if not self._is_high_confidence_support_signal(
+                    source_node_type=source_node_type,
+                    target_node_type=target_node_type,
+                ):
+                    continue
+
+                source_node_id = self._stable_node_id(profile_space_id, source_node_type, source_label)
+                target_node_id = self._stable_node_id(profile_space_id, target_node_type, target_label)
+                append_map_node(
+                    node_id=source_node_id,
+                    label=source_label,
+                    node_type=source_node_type,
+                    abstract_level="L2" if source_node_type == "foundation" else "L1",
+                    scope="universal" if source_node_type == "foundation" else "project-bound",
+                    canonical_summary=f"{source_label} supports current stage reasoning.",
+                )
+                append_map_node(
+                    node_id=target_node_id,
+                    label=target_label,
+                    node_type=target_node_type,
+                    abstract_level="L2" if target_node_type in {"concept", "method", "decision"} else "L1",
+                    scope="project-bound",
+                    canonical_summary=f"{target_label} is a supported node in the current stage.",
+                )
+
+                source_evidence_id = f"{project_id}:{stage_id}:{assessment_id}:supports-source-{index}"
+                append_evidence_ref(
+                    evidence_id=source_evidence_id,
+                    node_id=source_node_id,
+                    summary=f"{verdict} assessment referenced {source_label} as support for {target_label}.",
+                )
+                append_user_node_state(node_id=source_node_id)
+
+                target_evidence_id = f"{project_id}:{stage_id}:{assessment_id}:supports-target-{index}"
+                append_evidence_ref(
+                    evidence_id=target_evidence_id,
+                    node_id=target_node_id,
+                    summary=f"{verdict} assessment referenced {target_label} as supported by {source_label}.",
+                )
+                append_user_node_state(node_id=target_node_id)
+
+                supports_relation_id = (
+                    f"{project_id}:{stage_id}:{self._slugify(source_label)}:supports:{self._slugify(target_label)}"
+                )
+                relations.append(
+                    {
+                        "relation_id": supports_relation_id,
+                        "profile_space_id": profile_space_id,
+                        "source_node_id": source_node_id,
+                        "target_node_id": target_node_id,
+                        "relation_type": "supports",
+                        "strength": 2,
+                        "evidence_ids": [source_evidence_id, target_evidence_id],
+                        "status": "active",
+                    }
+                )
+                relation_ids.append(supports_relation_id)
 
             focus_cluster_id = f"{project_id}:{stage_id}:focus:{self._slugify(node_label)}"
             focus_reason_codes = ["current_project_hit"]
@@ -568,6 +669,13 @@ class ProfileSpaceService:
 
     def _stable_node_id(self, profile_space_id: str, prefix: str, label: str) -> str:
         return f"{profile_space_id}:{prefix}:{self._slugify(label)}"
+
+    def _is_high_confidence_support_signal(self, *, source_node_type: str, target_node_type: str) -> bool:
+        return (source_node_type, target_node_type) in {
+            ("foundation", "concept"),
+            ("foundation", "method"),
+            ("concept", "decision"),
+        }
 
     def _slugify(self, value: str) -> str:
         slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in value).strip("-")

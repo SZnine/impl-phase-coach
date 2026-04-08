@@ -6,8 +6,8 @@
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 最近已提交基线：`f05dece feat: cache focus explanations for knowledge map`
-- 当前工作区：在 `f05dece` 之上继续推进了 `阶段 32 / explanation generator 可替换策略层`，尚未提交
+- 最近已提交基线：`f0c1d21 docs: lock llm explanation adoption gate`
+- 当前工作区：在 `f0c1d21` 之上继续推进了 `阶段 36 / supports 关系最小扩展`，尚未提交
 - 当前主线：
   1. 稳定性优先主线已经收出可用基线
   2. 当前更活跃的是 `知识地图 V1 主线`
@@ -158,6 +158,20 @@
 2. `ExplanationGenerator`：生成策略
 3. `workspace_api`：只读 cache，不参与生成
 
+### 阶段 36
+
+已完成 `supports` 的最小高置信扩展：
+
+1. 只在显式 `support_signals` 存在时生成 `supports`
+2. 当前只允许三类高置信关系：
+   - `foundation -> concept`
+   - `foundation -> method`
+   - `concept -> decision`
+3. 单纯共现不会生成 `supports`
+4. 重复 assessment 会复用稳定 `supports` relation id，不会重复刷边
+
+当前这一步仍然是 deterministic default strategy，不接 LLM/agent 做关系推断。
+
 ## 4. 当前仍然属于过渡态的部分
 
 这些现在是诚实可用，但还不是长期目标实现：
@@ -226,11 +240,11 @@
 
 ## 7. 当前验证状态
 
-最近一轮和阶段 32 直接相关的验证结果：
+最近一轮和阶段 36 直接相关的验证结果：
 
-1. `python -m pytest tests/test_profile_space_service.py -q` -> `14 passed`
-2. `python -m pytest tests/test_workspace_api.py -q` -> `20 passed`
-3. `python -m pytest -q` -> `106 passed`
+1. `python -m pytest tests/test_profile_space_service.py -k "supports" -q` -> `2 passed`
+2. `python -m pytest tests/test_profile_space_service.py -q` -> `17 passed`
+3. `python -m pytest tests/test_workspace_api.py tests/test_http_api.py -q` -> `39 passed`
 
 当前已知非阻塞项：
 
@@ -240,19 +254,19 @@
 
 ## 8. 当前下一步建议
 
-当前最合理的下一步不是扩更多页面，而是继续在知识地图主线上做“策略点收口”或“价值表达增强”。
+当前最合理的下一步不是扩更多页面，而是继续在知识地图主线上做“supports 输入策略收口”或“主图表达轻增强”。
 
 推荐优先级：
 
 1. 先做文档/基线同步后的 checkpoint
 2. 再决定是否进入：
-   - explanation generator 的下一层策略替换设计
-   - 或关系表达轻增强
+   - `support_signals` 输入策略再收一层
+   - 或主图轻增强
 
 如果继续实现，我建议优先围绕：
 
-1. `ExplanationGenerator` 的下一层策略设计
-2. 何时值得接入真实 LLM explanation generator
+1. `support_signals` 如何更稳定地产生
+2. 何时值得把高置信 `supports` 从显式 signal 走向更强策略
 
 而不是现在就扩复杂图交互。
 
@@ -267,8 +281,8 @@
 3. docs/superpowers/plans/2026-04-08-knowledge-map-v1-implementation.md
 
 当前基线：
-- 最近已提交基线：f05dece feat: cache focus explanations for knowledge map
-- 当前工作区已经继续推进到“阶段 32 / explanation generator 可替换策略层”，但还未提交
+- 最近已提交基线：f0c1d21 docs: lock llm explanation adoption gate
+- 当前工作区已经继续推进到“阶段 36 / supports 关系最小扩展”，但还未提交
 
 请按 impl-phase-coach 方式继续：
 1. 先判断当前阶段

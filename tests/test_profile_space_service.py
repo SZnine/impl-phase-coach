@@ -283,6 +283,97 @@ def test_sync_from_assessment_reuses_focus_cluster_for_same_stage_hotspot() -> N
     assert clusters[0]["focus_reason_codes"] == ["current_project_hit", "weak_signal_active"]
 
 
+def test_sync_from_assessment_generates_high_confidence_supports_from_explicit_support_signals() -> None:
+    service = ProfileSpaceService.for_testing()
+
+    service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-supports-1",
+            "verdict": "partial",
+            "core_gaps": ["Review flow control"],
+            "misconceptions": ["Boundary confusion"],
+            "confidence": 0.82,
+            "support_signals": [
+                {
+                    "source_label": "State machine",
+                    "source_node_type": "foundation",
+                    "target_label": "Review flow control",
+                    "target_node_type": "concept",
+                }
+            ],
+        },
+    )
+
+    relations = service.list_knowledge_relations(project_id="proj-1", stage_id="stage-1")
+    supports_relations = [item for item in relations if item["relation_type"] == "supports"]
+
+    assert len(supports_relations) == 1
+    assert supports_relations[0]["source_node_id"].endswith(":foundation:state-machine")
+    assert supports_relations[0]["target_node_id"].endswith(":concept:review-flow-control")
+
+    map_nodes = service.list_map_nodes(project_id="proj-1", stage_id="stage-1")
+    node_types_by_id = {item["node_id"]: item["node_type"] for item in map_nodes}
+    assert node_types_by_id[supports_relations[0]["source_node_id"]] == "foundation"
+    assert node_types_by_id[supports_relations[0]["target_node_id"]] == "concept"
+
+
+def test_sync_from_assessment_does_not_generate_supports_from_cooccurrence_alone() -> None:
+    service = ProfileSpaceService.for_testing()
+
+    service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-supports-2",
+            "verdict": "partial",
+            "core_gaps": ["Decision awareness"],
+            "misconceptions": ["Boundary confusion"],
+            "confidence": 0.77,
+        },
+    )
+
+    relations = service.list_knowledge_relations(project_id="proj-1", stage_id="stage-1")
+
+    assert {item["relation_type"] for item in relations} == {"abstracts", "causes_mistake"}
+
+
+def test_sync_from_assessment_reuses_support_relation_for_same_signal() -> None:
+    service = ProfileSpaceService.for_testing()
+
+    assessment = {
+        "verdict": "partial",
+        "core_gaps": ["Review flow control"],
+        "misconceptions": [],
+        "confidence": 0.79,
+        "support_signals": [
+            {
+                "source_label": "State machine",
+                "source_node_type": "foundation",
+                "target_label": "Review flow control",
+                "target_node_type": "concept",
+            }
+        ],
+    }
+
+    service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={"assessment_id": "assessment-supports-3", **assessment},
+    )
+    service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={"assessment_id": "assessment-supports-4", **assessment},
+    )
+
+    relations = service.list_knowledge_relations(project_id="proj-1", stage_id="stage-1")
+    supports_relations = [item for item in relations if item["relation_type"] == "supports"]
+
+    assert len(supports_relations) == 1
+
+
 def test_sync_from_assessment_writes_focus_explanation_cache() -> None:
     service = ProfileSpaceService.for_testing()
 
