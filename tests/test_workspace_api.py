@@ -1,6 +1,7 @@
 import json
 
 from review_gate.action_dtos import ProposalActionRequest, SubmitAnswerRequest
+from review_gate.domain import FocusExplanation
 from review_gate.profile_space_service import ProfileSpaceService
 from review_gate.proposal_center_service import ProposalCenterService
 from review_gate.review_flow_service import ReviewFlowService
@@ -259,6 +260,63 @@ def test_workspace_api_sorts_focus_clusters_by_reason_priority() -> None:
     assert summary_view.focus_clusters[0].title == "State and return value separation hotspot"
     assert "weak_signal_active" in summary_view.focus_clusters[0].focus_reason_codes
     assert summary_view.focus_clusters[1].title == "Encoding boundary hotspot"
+
+
+def test_workspace_api_prefers_cached_focus_explanation_over_cluster_summary() -> None:
+    profile_space = ProfileSpaceService.for_testing()
+    profile_space.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-1",
+            "verdict": "partial",
+            "core_gaps": ["State and return value separation"],
+            "misconceptions": [],
+        },
+    )
+    cluster = profile_space.list_focus_clusters(project_id="proj-1", stage_id="stage-1")[0]
+    profile_space._focus_explanations[("focus_cluster", cluster["cluster_id"])] = FocusExplanation(
+        explanation_id=f"focus_cluster:{cluster['cluster_id']}",
+        profile_space_id="profile-space:proj-1",
+        subject_type="focus_cluster",
+        subject_id=cluster["cluster_id"],
+        reason_codes=["current_project_hit", "weak_signal_active"],
+        summary="Cached explanation wins.",
+        generated_by="deterministic",
+        generated_at="2026-04-08T16:10:00Z",
+        version="v1",
+    ).to_dict()
+    profile_space._focus_clusters[cluster["cluster_id"]]["focus_reason_summary"] = "Stale cluster summary."
+
+    api = WorkspaceAPI(flow=ReviewFlowService.for_testing(), profile_space=profile_space)
+
+    summary_view = api.get_knowledge_map_summary_view(project_id="proj-1", stage_id="stage-1")
+
+    assert summary_view.focus_clusters[0].focus_reason_summary == "Cached explanation wins."
+
+
+def test_workspace_api_falls_back_when_focus_explanation_cache_is_missing() -> None:
+    profile_space = ProfileSpaceService.for_testing()
+    profile_space.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-1",
+            "verdict": "partial",
+            "core_gaps": ["State and return value separation"],
+            "misconceptions": [],
+        },
+    )
+    cluster = profile_space.list_focus_clusters(project_id="proj-1", stage_id="stage-1")[0]
+    profile_space._focus_explanations.clear()
+    profile_space._focus_clusters[cluster["cluster_id"]]["focus_reason_summary"] = ""
+
+    api = WorkspaceAPI(flow=ReviewFlowService.for_testing(), profile_space=profile_space)
+
+    summary_view = api.get_knowledge_map_summary_view(project_id="proj-1", stage_id="stage-1")
+
+    assert "State and return value separation" in summary_view.focus_clusters[0].focus_reason_summary
+    assert summary_view.focus_clusters[0].focus_reason_summary.endswith(".")
 
 
 def test_workspace_api_returns_proposals_view() -> None:

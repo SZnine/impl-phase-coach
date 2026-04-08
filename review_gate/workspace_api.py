@@ -284,7 +284,7 @@ class WorkspaceAPI:
                 center_node_id=item["center_node_id"],
                 neighbor_node_ids=list(item.get("neighbor_node_ids", [])),
                 focus_reason_codes=list(item.get("focus_reason_codes", [])),
-                focus_reason_summary=self._focus_reason_summary(item),
+                focus_reason_summary=self._focus_reason_summary(item, project_id=project_id),
             )
             for item in focus_cluster_items
         ]
@@ -335,7 +335,7 @@ class WorkspaceAPI:
                 center_node_id=selected_cluster_item["center_node_id"],
                 neighbor_node_ids=list(selected_cluster_item.get("neighbor_node_ids", [])),
                 focus_reason_codes=list(selected_cluster_item.get("focus_reason_codes", [])),
-                focus_reason_summary=self._focus_reason_summary(selected_cluster_item),
+                focus_reason_summary=self._focus_reason_summary(selected_cluster_item, project_id=project_id),
             )
             if selected_cluster_item is not None
             else None
@@ -437,7 +437,17 @@ class WorkspaceAPI:
         priority = min((self._FOCUS_REASON_PRIORITY.get(code, 99) for code in codes), default=99)
         return (priority, str(item.get("title", "")))
 
-    def _focus_reason_summary(self, item: dict) -> str:
+    def _focus_reason_summary(self, item: dict, project_id: str | None = None) -> str:
+        explanation = self._profile_space.get_focus_explanation(
+            "focus_cluster",
+            str(item.get("cluster_id", "")),
+            project_id=project_id,
+        )
+        if explanation is not None:
+            summary = str(explanation.get("summary", "")).strip()
+            if summary:
+                return summary
+
         summary = str(item.get("focus_reason_summary", "")).strip()
         if summary:
             return summary

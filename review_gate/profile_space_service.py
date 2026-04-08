@@ -3,6 +3,7 @@ from __future__ import annotations
 from review_gate.domain import (
     EvidenceRef,
     FocusCluster,
+    FocusExplanation,
     KnowledgeNode,
     KnowledgeRelation,
     ProfileSpace,
@@ -24,6 +25,7 @@ class ProfileSpaceService:
         self._user_node_states: dict[tuple[str, str], dict] = {}
         self._knowledge_relations: dict[str, dict] = {}
         self._focus_clusters: dict[str, dict] = {}
+        self._focus_explanations: dict[tuple[str, str], dict] = {}
 
     @classmethod
     def for_testing(cls) -> "ProfileSpaceService":
@@ -91,6 +93,7 @@ class ProfileSpaceService:
         relations: list[dict] = []
         focus_cluster_ids: list[str] = []
         focus_clusters: list[dict] = []
+        focus_explanations: list[dict] = []
         if has_meaningful_signal:
             node_label = core_gaps[0] if core_gaps else (misconceptions[0] if misconceptions else verdict)
             node_id = f"{project_id}:{stage_id}:{assessment_id}:node-1"
@@ -296,6 +299,12 @@ class ProfileSpaceService:
             )
             focus_clusters.append(focus_cluster)
             focus_cluster_ids.append(focus_cluster_id)
+            focus_explanations.append(
+                self._build_focus_explanation(
+                    profile_space_id=profile_space_id,
+                    cluster=focus_cluster,
+                )
+            )
 
         latest_summary = (
             f"synced {verdict} assessment with {len(index_entry_ids)} knowledge entries and {len(mistake_ids)} mistakes"
@@ -320,6 +329,8 @@ class ProfileSpaceService:
                 self._knowledge_relations[item["relation_id"]] = dict(item)
             for item in focus_clusters:
                 self._focus_clusters[item["cluster_id"]] = dict(item)
+            for item in focus_explanations:
+                self._focus_explanations[(item["subject_type"], item["subject_id"])] = dict(item)
 
             self._stage_summaries[(project_id, stage_id)] = self._build_stage_summary(project_id, stage_id, latest_summary)
         else:
@@ -339,6 +350,8 @@ class ProfileSpaceService:
                 self._store.upsert_knowledge_relation(KnowledgeRelation.from_dict(item))
             for item in focus_clusters:
                 self._store.upsert_focus_cluster(FocusCluster.from_dict(item))
+            for item in focus_explanations:
+                self._store.upsert_focus_explanation(FocusExplanation.from_dict(item))
 
             summary = self._build_stage_summary(project_id, stage_id, latest_summary)
             self._store.upsert_profile_stage_summary(profile_space_id, project_id, stage_id, summary)
@@ -505,6 +518,19 @@ class ProfileSpaceService:
         matching_node_ids = {item["node_id"] for item in self.list_map_nodes(project_id=project_id, stage_id=stage_id)}
         return [item for item in items if item["center_node_id"] in matching_node_ids]
 
+    def get_focus_explanation(self, subject_type: str, subject_id: str, project_id: str | None = None) -> dict | None:
+        if self._store is not None:
+            profile_space_id = self._profile_space_id(project_id) if project_id is not None else None
+            item = self._store.get_focus_explanation(
+                subject_type=subject_type,
+                subject_id=subject_id,
+                profile_space_id=profile_space_id,
+            )
+            return item.to_dict() if item is not None else None
+
+        item = self._focus_explanations.get((subject_type, subject_id))
+        return dict(item) if item is not None else None
+
     def _build_stage_summary(self, project_id: str, stage_id: str, latest_summary: str) -> dict:
         return {
             "knowledge_entry_count": len(self.list_index_entries(project_id=project_id, stage_id=stage_id)),
@@ -585,3 +611,35 @@ class ProfileSpaceService:
             "is_pinned": bool(existing.get("is_pinned", False)) if existing is not None else False,
             "status": "active",
         }
+
+    def _build_focus_explanation(self, *, profile_space_id: str, cluster: dict) -> dict:
+        return {
+            "explanation_id": f"focus_cluster:{cluster['cluster_id']}",
+            "profile_space_id": profile_space_id,
+            "subject_type": "focus_cluster",
+            "subject_id": cluster["cluster_id"],
+            "reason_codes": list(cluster.get("focus_reason_codes", [])),
+            "summary": self._build_focus_explanation_summary(cluster),
+            "generated_by": "deterministic",
+            "generated_at": current_utc_timestamp(),
+            "version": "v1",
+        }
+
+    def _build_focus_explanation_summary(self, cluster: dict) -> str:
+        title = str(cluster.get("title", "This cluster")).replace(" hotspot", "")
+        codes = list(cluster.get("focus_reason_codes", []))
+        if "weak_signal_active" in codes and "current_project_hit" in codes:
+            return f"{title} matters now because the current stage exposed it as an active weak area."
+        if "weak_signal_active" in codes:
+            return f"{title} matters now because it still shows an active weak signal."
+        if "current_project_hit" in codes:
+            return f"{title} matters now because the current project is actively hitting it."
+        if "foundation_hot" in codes:
+            return f"{title} matters now because it is acting as a frequently triggered foundation hotspot."
+        if "recently_changed" in codes:
+            return f"{title} matters now because its supporting knowledge changed recently."
+        if "high_structural_importance" in codes:
+            return f"{title} matters now because it is a structural anchor in the current map."
+        if "cross_project_reuse" in codes:
+            return f"{title} matters now because it keeps showing up across multiple projects."
+        return f"{title} matters now because it is part of the current working map."

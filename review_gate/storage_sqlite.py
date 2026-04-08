@@ -11,6 +11,7 @@ from review_gate.domain import (
     DecisionFact,
     EvidenceRef,
     FocusCluster,
+    FocusExplanation,
     KnowledgeNode,
     KnowledgeRelation,
     ProfileSpace,
@@ -156,6 +157,19 @@ class SQLiteStore:
 
                 CREATE INDEX IF NOT EXISTS idx_focus_cluster_store_profile_space
                     ON focus_cluster_store(profile_space_id);
+
+                CREATE TABLE IF NOT EXISTS focus_explanation_store (
+                    explanation_id TEXT PRIMARY KEY,
+                    profile_space_id TEXT NOT NULL,
+                    subject_type TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
+                    generated_by TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_focus_explanation_store_profile_subject
+                    ON focus_explanation_store(profile_space_id, subject_type, subject_id);
 
                 CREATE TABLE IF NOT EXISTS question_set_store (
                     question_set_id TEXT PRIMARY KEY,
@@ -708,6 +722,52 @@ class SQLiteStore:
             tuple(params),
         )
         return [FocusCluster.from_json(row["payload"]) for row in rows]
+
+    def upsert_focus_explanation(self, explanation: FocusExplanation) -> None:
+        payload = explanation.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO focus_explanation_store (
+                    explanation_id,
+                    profile_space_id,
+                    subject_type,
+                    subject_id,
+                    generated_by,
+                    version,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    explanation.explanation_id,
+                    explanation.profile_space_id,
+                    explanation.subject_type,
+                    explanation.subject_id,
+                    explanation.generated_by,
+                    explanation.version,
+                    payload,
+                ),
+            )
+
+    def get_focus_explanation(
+        self,
+        *,
+        subject_type: str,
+        subject_id: str,
+        profile_space_id: str | None = None,
+    ) -> FocusExplanation | None:
+        clauses = ["subject_type = ?", "subject_id = ?"]
+        params: list[Any] = [subject_type, subject_id]
+        if profile_space_id is not None:
+            clauses.append("profile_space_id = ?")
+            params.append(profile_space_id)
+        row = self._fetch_one(
+            f"SELECT payload FROM focus_explanation_store WHERE {' AND '.join(clauses)} ORDER BY explanation_id LIMIT 1",
+            tuple(params),
+        )
+        if row is None:
+            return None
+        return FocusExplanation.from_json(row["payload"])
 
     def upsert_question_set(self, question_set: QuestionSet) -> None:
         payload = question_set.to_json()

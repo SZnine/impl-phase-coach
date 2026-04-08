@@ -12,6 +12,7 @@ from review_gate.domain import (
     DecisionFact,
     EvidenceRef,
     FocusCluster,
+    FocusExplanation,
     KnowledgeNode,
     KnowledgeRelation,
     ProfileSpace,
@@ -302,18 +303,38 @@ def test_sqlite_store_round_trips_knowledge_map_objects(tmp_path: Path) -> None:
         is_pinned=False,
         status="active",
     )
+    explanation = FocusExplanation(
+        explanation_id="focus_cluster:cluster-1",
+        profile_space_id="profile-space:proj-1",
+        subject_type="focus_cluster",
+        subject_id="cluster-1",
+        reason_codes=["current_project_hit", "weak_signal_active"],
+        summary="State boundary matters now because the current stage exposed it as an active weak area.",
+        generated_by="deterministic",
+        generated_at="2026-04-08T16:06:00Z",
+        version="v1",
+    )
 
     store.upsert_knowledge_node(node)
     store.upsert_evidence_ref(evidence)
     store.upsert_user_node_state(state)
     store.upsert_knowledge_relation(relation)
     store.upsert_focus_cluster(cluster)
+    store.upsert_focus_explanation(explanation)
 
     assert store.get_knowledge_node("node-1") == node
     assert store.list_evidence_refs(node_id="node-1") == [evidence]
     assert store.get_user_node_state("profile-space:proj-1", "node-1") == state
     assert store.list_knowledge_relations(source_node_id="node-1") == [relation]
     assert store.list_focus_clusters(profile_space_id="profile-space:proj-1") == [cluster]
+    assert (
+        store.get_focus_explanation(
+            subject_type="focus_cluster",
+            subject_id="cluster-1",
+            profile_space_id="profile-space:proj-1",
+        )
+        == explanation
+    )
 
 
 def test_sqlite_store_round_trips_profile_space_entries(

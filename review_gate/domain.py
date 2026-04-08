@@ -374,6 +374,33 @@ class FocusCluster(JsonSerializable):
 
 
 @dataclass(slots=True)
+class FocusExplanation(JsonSerializable):
+    explanation_id: str
+    profile_space_id: str
+    subject_type: str
+    subject_id: str
+    reason_codes: list[str] = field(default_factory=list)
+    summary: str = ""
+    generated_by: str = "deterministic"
+    generated_at: str = ""
+    version: str = "v1"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            explanation_id=_coerce_str(payload["explanation_id"]),
+            profile_space_id=_coerce_str(payload["profile_space_id"]),
+            subject_type=_coerce_str(payload.get("subject_type"), ""),
+            subject_id=_coerce_str(payload.get("subject_id"), ""),
+            reason_codes=_coerce_str_list(payload.get("reason_codes")),
+            summary=_coerce_str(payload.get("summary"), ""),
+            generated_by=_coerce_str(payload.get("generated_by"), "deterministic"),
+            generated_at=_coerce_str(payload.get("generated_at"), ""),
+            version=_coerce_str(payload.get("version"), "v1"),
+        )
+
+
+@dataclass(slots=True)
 class QuestionSet(JsonSerializable):
     question_set_id: str
     stage_review_id: str

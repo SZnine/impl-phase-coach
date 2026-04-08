@@ -6,9 +6,9 @@
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 最近已提交基线：`9e843b7 feat: tighten workspace restore and profile signal gates`
+- 最近已提交基线：`1626a28 feat: build knowledge map v1 slice`
 - 当前主线：`稳定性优先`
-- 当前工作区：存在未提交的知识地图 V1 改动
+- 当前工作区：已在知识地图 V1 基线上继续推进 explanation cache 改动
 
 ## 2. 当前主线
 
@@ -24,8 +24,9 @@
    - 摘要页 -> 主图页
    - 最小关系
    - FocusCluster 稳定入口
+   - explanation cache
 
-当前更活跃的是第 2 条线，但前提仍是不能破坏稳定性基线。
+当前更活跃的是第 2 条线，但前提仍然是不能破坏稳定性基线。
 
 ## 3. 已完成的稳定性能力
 
@@ -179,6 +180,27 @@
 - `tests/test_workspace_api.py`
 - `frontend/src/read-pages.test.tsx`
 
+#### 阶段 30
+
+已完成 explanation 预生成缓存层的最小落地：
+
+1. 新增 `FocusExplanation`
+2. `focus_explanation_store` 已有真实 SQLite 宿主
+3. `sync_from_assessment(...)` 会写入 deterministic explanation cache
+4. `workspace_api` 已改成：
+   - 优先读 explanation cache
+   - 无缓存时再走 cluster summary / fallback
+
+关键文件：
+
+- `review_gate/domain.py`
+- `review_gate/storage_sqlite.py`
+- `review_gate/profile_space_service.py`
+- `review_gate/workspace_api.py`
+- `tests/test_workbench_storage.py`
+- `tests/test_profile_space_service.py`
+- `tests/test_workspace_api.py`
+
 ## 5. 当前知识地图 V1 的真实边界
 
 当前已经成立的是：
@@ -192,13 +214,14 @@
 5. `FocusCluster` 已经进入最小应用流，并具备基础稳定化
 6. 主图页已经能看见关系，而不只是节点卡片
 7. 摘要页已经能解释“为什么它现在重要”
+8. explanation 已经有独立缓存宿主，而不只是 `workspace_api` 临时文案
 
 当前仍然属于过渡态的部分：
 
 1. `KnowledgeRelation` 目前只生成极小集合，还没有更丰富的结构关系
 2. `FocusCluster` 仍然只是用户侧最小对象，不是全局候选簇系统
 3. `KnowledgeGraphPage` 仍是片区式表达，不是真正拓扑布局
-4. `focus_reason_summary` 目前是静态 signal 驱动，不是预生成解释缓存
+4. explanation 目前仍由 deterministic builder 生成，不是异步 LLM/agent 生成
 5. 旧的 `ProfileSpace` legacy 读面仍保留，未整体切到新对象读面
 
 ## 6. 当前明确不做的内容
@@ -234,12 +257,15 @@
    - 负责当前用户与节点的关系状态
 7. `FocusCluster`
    - 负责视图级知识片区组织对象
+8. `FocusExplanation`
+   - 负责“为什么它现在重要”的可缓存解释层
 
 不要把：
 
 - 用户状态塞进节点本体
 - 证据锚点塞进默认主图
 - 焦点簇写成临时页面算法结果
+- explanation 继续塞回 `workspace_api` 兜底逻辑
 
 ## 8. 当前已冻结的 agent / LLM 接入原则
 
@@ -257,20 +283,22 @@
 1. 关系推断明显超过规则边界
 2. FocusCluster 聚合评分开始依赖高语义判断
 3. 去重 / 重命名 / 升降层建议开始出现高价值
-4. 解释生成的规则链明显变脆
+4. explanation generator 的规则链明显变脆
 
-当前 API 已备好，所以到点时可以直接显式提出，不需要死守 deterministic。
+当前 API 已备好，所以到点时可以直接显式建议接入，不需要死守 deterministic。
 
 ## 9. 最近验证结果
 
 最新确认通过的关键回归：
 
-1. `python -m pytest tests/test_profile_space_service.py -q` -> `11 passed`
+1. `python -m pytest tests/test_profile_space_service.py -q` -> `12 passed`
 2. `python -m pytest tests/test_workspace_api.py tests/test_http_api.py -q` -> `36 passed`
-3. `python -m pytest -q` -> `100 passed`
+3. `python -m pytest -q` -> `104 passed`
 4. `npm --prefix frontend test -- src/read-pages.test.tsx` -> `15 passed`
 5. `npm --prefix frontend test` -> `34 passed`
 6. `npm --prefix frontend run build` -> `passed`
+7. `python -m pytest tests/test_workbench_storage.py::test_sqlite_store_round_trips_knowledge_map_objects -q` -> `1 passed`
+8. `python -m pytest tests/test_workspace_api.py -q` -> `20 passed`
 
 另有真实试跑产物：
 
@@ -289,7 +317,7 @@
 
 当前已经完成并冻结：
 
-- `阶段 28 / FocusCluster 与 summary explanation 可读性收口`
+- `阶段 30 / explanation 预生成缓存层`
 
 当前最合理的下一步不是继续发散，而是先做一次阶段判断：
 
@@ -299,7 +327,7 @@
 如果继续知识地图主线，当前更合理的下一步优先级是：
 
 1. 继续增强主图表达，但保持轻量
-2. 或设计 explanation 预生成缓存方案
+2. 或把 explanation generator 做成更明确的可替换策略层
 3. 不要直接跳复杂图交互、复杂治理、实时 LLM
 
 ## 12. 新对话启动 Prompt
@@ -318,7 +346,7 @@
 2. docs/superpowers/plans/2026-04-08-knowledge-map-core-model.md
 3. docs/superpowers/plans/2026-04-08-knowledge-map-v1-implementation.md
 
-当前项目是 impl-phase-coach。当前主线仍然是“稳定性优先”，但知识地图 V1 已经完成 Task 1-6，以及阶段 27、28 的最小收口。请不要跨阶段扩写，先判断当前处于哪个阶段，再输出：
+当前项目是 impl-phase-coach。当前主线仍然是“稳定性优先”，但知识地图 V1 已经完成 Task 1-6，以及阶段 27、28、30 的最小收口。请不要跨阶段扩写，先判断当前处于哪个阶段，再输出：
 - 当前阶段目标
 - 当前阶段产物
 - 当前阶段退出条件

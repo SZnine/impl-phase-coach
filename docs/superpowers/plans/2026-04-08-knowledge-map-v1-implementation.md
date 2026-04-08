@@ -514,10 +514,100 @@ git commit -m "docs: record knowledge map v1 implementation baseline"
 
 ---
 
+### Task 6: Generate Minimal Relations And Stabilize Focus Clusters
+
+**Files:**
+- Modify: `review_gate/profile_space_service.py`
+- Test: `tests/test_profile_space_service.py`
+
+- [ ] **Step 1: Add failing tests for minimal structure**
+
+Lock two behaviors:
+1. `sync_from_assessment(...)` generates:
+   - `abstracts`
+   - `causes_mistake`
+2. repeated assessments for the same stage hotspot reuse one `FocusCluster`
+
+- [ ] **Step 2: Implement the minimum deterministic relation projection**
+
+Only generate:
+1. `abstracts`
+2. `causes_mistake`
+
+Do not expand to broad `supports / depends_on` inference yet.
+
+- [ ] **Step 3: Stabilize FocusCluster ids**
+
+Use a stable hotspot key:
+- `project + stage + hotspot slug`
+
+This stage keeps `FocusCluster` as a user-side object, not a global cluster template system.
+
+- [ ] **Step 4: Re-run focused backend tests**
+
+Run:
+- `python -m pytest tests/test_profile_space_service.py -q`
+
+Expected: PASS.
+
+---
+
+### Task 7: Add Focus Explanation Cache And Cache-First Fallback
+
+**Files:**
+- Modify: `review_gate/domain.py`
+- Modify: `review_gate/storage_sqlite.py`
+- Modify: `review_gate/profile_space_service.py`
+- Modify: `review_gate/workspace_api.py`
+- Test: `tests/test_workbench_storage.py`
+- Test: `tests/test_profile_space_service.py`
+- Test: `tests/test_workspace_api.py`
+
+- [ ] **Step 1: Add the explanation object and store**
+
+Introduce a small explanation cache object:
+- `FocusExplanation`
+
+It should persist:
+1. `subject_type`
+2. `subject_id`
+3. `reason_codes`
+4. `summary`
+5. `generated_by`
+6. `generated_at`
+7. `version`
+
+- [ ] **Step 2: Write deterministic explanation cache entries**
+
+When `sync_from_assessment(...)` updates a `FocusCluster`, also write or refresh a deterministic `FocusExplanation`.
+
+- [ ] **Step 3: Make workspace_api cache-first**
+
+`workspace_api` should:
+1. prefer cached explanation text
+2. fall back to cluster summary or deterministic fallback only when cache is missing
+
+This must not introduce realtime LLM dependency into page reads.
+
+- [ ] **Step 4: Re-run focused backend regressions**
+
+Run:
+- `python -m pytest tests/test_workbench_storage.py::test_sqlite_store_round_trips_knowledge_map_objects -q`
+- `python -m pytest tests/test_profile_space_service.py -q`
+- `python -m pytest tests/test_workspace_api.py -q`
+
+Expected: PASS.
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**
 - Covers the first five core objects from the knowledge-map core model: `KnowledgeNode`, `EvidenceRef`, `UserNodeState`, `KnowledgeRelation`, `FocusCluster`.
+- Extends the v1 plan with:
+  - minimal relation generation
+  - focus-cluster stabilization
+  - cache-first explanation reads
 - Covers the agreed first-entry flow: summary page first, graph main view second.
 - Keeps evidence anchors out of the default main graph surface.
 - Keeps LLM governance, merge execution, complex editing, and global cluster templates out of scope.
@@ -527,7 +617,7 @@ git commit -m "docs: record knowledge map v1 implementation baseline"
 - Every task has exact files, tests, commands, and implementation direction.
 
 **3. Type consistency:**
-- The plan consistently uses `KnowledgeNode`, `EvidenceRef`, `UserNodeState`, `KnowledgeRelation`, `FocusCluster`, `KnowledgeMapSummaryViewDTO`, and `KnowledgeGraphMainViewDTO` across all tasks.
+- The plan consistently uses `KnowledgeNode`, `EvidenceRef`, `UserNodeState`, `KnowledgeRelation`, `FocusCluster`, `FocusExplanation`, `KnowledgeMapSummaryViewDTO`, and `KnowledgeGraphMainViewDTO` across all tasks.
 
 ## Execution Handoff
 

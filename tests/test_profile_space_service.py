@@ -279,3 +279,27 @@ def test_sync_from_assessment_reuses_focus_cluster_for_same_stage_hotspot() -> N
     assert len(clusters) == 1
     assert first["focus_cluster_ids"] == second["focus_cluster_ids"]
     assert clusters[0]["focus_reason_codes"] == ["current_project_hit", "weak_signal_active"]
+
+
+def test_sync_from_assessment_writes_focus_explanation_cache() -> None:
+    service = ProfileSpaceService.for_testing()
+
+    result = service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-5",
+            "verdict": "partial",
+            "core_gaps": ["Decision awareness"],
+            "misconceptions": [],
+            "confidence": 0.76,
+        },
+    )
+
+    explanation = service.get_focus_explanation("focus_cluster", result["focus_cluster_ids"][0], project_id="proj-1")
+
+    assert explanation is not None
+    assert explanation["subject_type"] == "focus_cluster"
+    assert explanation["subject_id"] == result["focus_cluster_ids"][0]
+    assert explanation["generated_by"] == "deterministic"
+    assert "Decision awareness" in explanation["summary"]
