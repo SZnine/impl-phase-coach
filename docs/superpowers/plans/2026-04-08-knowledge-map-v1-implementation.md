@@ -642,6 +642,32 @@ Expected: PASS.
 
 ---
 
+### LLM Explanation Adoption Gate
+
+This plan does **not** immediately switch to a realtime or default LLM explanation generator.
+
+The next explanation upgrade should happen only when at least **2** of the following become true:
+
+1. deterministic explanation text has become obviously repetitive and is no longer helping users distinguish why one focus cluster matters more than another
+2. `focus_reason_codes` and evidence summaries are already stable enough that explanation quality is now limited more by expression than by weak underlying signals
+3. the knowledge-map summary page has become a high-frequency entry point and explanation quality is clearly affecting product value
+4. explanation refresh can run asynchronously and write cache without entering the page-read critical path
+5. the team is willing to absorb one more quality-regression surface for explanation output
+
+When that gate is reached, the first LLM adoption should still keep these boundaries:
+
+1. add `LlmFocusExplanationGenerator` as an alternative generator, not a replacement for the cache/store shape
+2. write explanation results into cache asynchronously
+3. keep page reads `cache first`
+4. retain deterministic fallback
+
+In other words:
+
+- current stage: `deterministic default strategy`
+- future upgrade: `LLM as an explanation enhancement layer, not a realtime dependency`
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**
