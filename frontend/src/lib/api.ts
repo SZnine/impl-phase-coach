@@ -123,6 +123,40 @@ export type KnowledgeGraphViewDTO = {
   total_count: number;
 };
 
+export type FocusClusterCardDTO = {
+  cluster_id: string;
+  title: string;
+  center_node_id: string;
+  neighbor_node_ids: string[];
+  focus_reason_codes: string[];
+  focus_reason_summary: string;
+};
+
+export type KnowledgeMapSummaryViewDTO = {
+  focus_clusters: FocusClusterCardDTO[];
+  current_weak_spots: string[];
+  foundation_hotspots: string[];
+};
+
+export type KnowledgeNodeCardDTO = {
+  node_id: string;
+  label: string;
+  node_type: string;
+  abstract_level: string;
+  scope: string;
+  canonical_summary: string;
+  mastery_status: string;
+  review_needed: boolean;
+  relation_preview: Array<Record<string, string>>;
+  evidence_summary: Record<string, number>;
+};
+
+export type KnowledgeGraphMainViewDTO = {
+  selected_cluster: FocusClusterCardDTO | null;
+  nodes: KnowledgeNodeCardDTO[];
+  relations: Array<Record<string, string>>;
+};
+
 export type ProposalItemDTO = {
   proposal_id: string;
   proposal_type: string;
@@ -236,8 +270,15 @@ export type ApiClient = {
   getProjectView(projectId: string): Promise<ProjectViewDTO>;
   getStageView(projectId: string, stageId: string): Promise<StageViewDTO>;
   getMistakesView(projectId?: string, stageId?: string): Promise<MistakesViewDTO>;
+  getKnowledgeMapSummaryView(projectId?: string, stageId?: string): Promise<KnowledgeMapSummaryViewDTO>;
   getKnowledgeIndexView(projectId?: string, stageId?: string): Promise<KnowledgeIndexViewDTO>;
   getKnowledgeGraphView(projectId?: string, stageId?: string): Promise<KnowledgeGraphViewDTO>;
+  getKnowledgeGraphMainView(
+    projectId?: string,
+    stageId?: string,
+    clusterId?: string,
+    nodeId?: string,
+  ): Promise<KnowledgeGraphMainViewDTO>;
   getProposalsView(): Promise<ProposalsViewDTO>;
   submitProposalAction(request: ProposalActionRequestDTO): Promise<ProposalActionResponseDTO>;
   getQuestionSetView(
@@ -350,6 +391,21 @@ export function createApiClient(baseUrl = "/api", fetchImpl: FetchLike = fetch):
         "mistakes view",
       );
     },
+    getKnowledgeMapSummaryView(projectId, stageId) {
+      const query = new URLSearchParams();
+      if (projectId) {
+        query.set("project_id", projectId);
+      }
+      if (stageId) {
+        query.set("stage_id", stageId);
+      }
+      const suffix = query.size > 0 ? `?${query.toString()}` : "";
+      return readJson<KnowledgeMapSummaryViewDTO>(
+        fetchImpl,
+        `${normalizedBaseUrl}/knowledge${suffix}`,
+        "knowledge map summary view",
+      );
+    },
     getKnowledgeIndexView(projectId, stageId) {
       const query = new URLSearchParams();
       if (projectId) {
@@ -378,6 +434,27 @@ export function createApiClient(baseUrl = "/api", fetchImpl: FetchLike = fetch):
         fetchImpl,
         `${normalizedBaseUrl}/knowledge/graph${suffix}`,
         "knowledge graph view",
+      );
+    },
+    getKnowledgeGraphMainView(projectId, stageId, clusterId, nodeId) {
+      const query = new URLSearchParams();
+      if (projectId) {
+        query.set("project_id", projectId);
+      }
+      if (stageId) {
+        query.set("stage_id", stageId);
+      }
+      if (clusterId) {
+        query.set("cluster_id", clusterId);
+      }
+      if (nodeId) {
+        query.set("node_id", nodeId);
+      }
+      const suffix = query.size > 0 ? `?${query.toString()}` : "";
+      return readJson<KnowledgeGraphMainViewDTO>(
+        fetchImpl,
+        `${normalizedBaseUrl}/knowledge/graph-main${suffix}`,
+        "knowledge graph main view",
       );
     },
     getProposalsView() {

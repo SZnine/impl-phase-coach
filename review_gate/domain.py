@@ -74,6 +74,21 @@ def _coerce_int(value: Any, default: int = 0) -> int:
         return default
     return int(value)
 
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "on"}:
+            return True
+        if lowered in {"false", "0", "no", "off"}:
+            return False
+    return bool(value)
+
+
 def _coerce_float(value: Any, default: float = 0.0) -> float:
     if value is None:
         return default
@@ -216,6 +231,145 @@ class DecisionFact(JsonSerializable):
             decision_value=_coerce_str(payload["decision_value"]),
             reason_summary=_coerce_str(payload["reason_summary"]),
             created_at=_coerce_str(payload["created_at"]),
+        )
+
+
+@dataclass(slots=True)
+class KnowledgeNode(JsonSerializable):
+    node_id: str
+    profile_space_id: str
+    label: str
+    node_type: str
+    abstract_level: str
+    scope: str
+    canonical_summary: str
+    source_refs: list[str] = field(default_factory=list)
+    seed_or_generated: str = "generated"
+    status: str = "active"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            node_id=_coerce_str(payload["node_id"]),
+            profile_space_id=_coerce_str(payload["profile_space_id"]),
+            label=_coerce_str(payload.get("label"), ""),
+            node_type=_coerce_str(payload.get("node_type"), ""),
+            abstract_level=_coerce_str(payload.get("abstract_level"), ""),
+            scope=_coerce_str(payload.get("scope"), ""),
+            canonical_summary=_coerce_str(payload.get("canonical_summary"), ""),
+            source_refs=_coerce_str_list(payload.get("source_refs")),
+            seed_or_generated=_coerce_str(payload.get("seed_or_generated"), "generated"),
+            status=_coerce_str(payload.get("status"), "active"),
+        )
+
+
+@dataclass(slots=True)
+class EvidenceRef(JsonSerializable):
+    evidence_id: str
+    profile_space_id: str
+    node_id: str
+    evidence_type: str
+    ref_id: str
+    project_id: str
+    stage_id: str
+    summary: str
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            evidence_id=_coerce_str(payload["evidence_id"]),
+            profile_space_id=_coerce_str(payload["profile_space_id"]),
+            node_id=_coerce_str(payload["node_id"]),
+            evidence_type=_coerce_str(payload.get("evidence_type"), ""),
+            ref_id=_coerce_str(payload.get("ref_id"), ""),
+            project_id=_coerce_str(payload.get("project_id"), ""),
+            stage_id=_coerce_str(payload.get("stage_id"), ""),
+            summary=_coerce_str(payload.get("summary"), ""),
+        )
+
+
+@dataclass(slots=True)
+class UserNodeState(JsonSerializable):
+    profile_space_id: str
+    node_id: str
+    activation_status: str = "inactive"
+    mastery_status: str = "unverified"
+    review_needed: bool = False
+    weak_signal_count: int = 0
+    linked_project_count: int = 0
+    last_seen_at: str | None = None
+    confidence: float = 0.0
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            profile_space_id=_coerce_str(payload["profile_space_id"]),
+            node_id=_coerce_str(payload["node_id"]),
+            activation_status=_coerce_str(payload.get("activation_status"), "inactive"),
+            mastery_status=_coerce_str(payload.get("mastery_status"), "unverified"),
+            review_needed=_coerce_bool(payload.get("review_needed"), False),
+            weak_signal_count=_coerce_int(payload.get("weak_signal_count"), 0),
+            linked_project_count=_coerce_int(payload.get("linked_project_count"), 0),
+            last_seen_at=_coerce_optional_str(payload.get("last_seen_at")),
+            confidence=_coerce_float(payload.get("confidence"), 0.0),
+        )
+
+
+@dataclass(slots=True)
+class KnowledgeRelation(JsonSerializable):
+    relation_id: str
+    profile_space_id: str
+    source_node_id: str
+    target_node_id: str
+    relation_type: str
+    strength: int = 1
+    evidence_ids: list[str] = field(default_factory=list)
+    status: str = "active"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            relation_id=_coerce_str(payload["relation_id"]),
+            profile_space_id=_coerce_str(payload["profile_space_id"]),
+            source_node_id=_coerce_str(payload.get("source_node_id"), ""),
+            target_node_id=_coerce_str(payload.get("target_node_id"), ""),
+            relation_type=_coerce_str(payload.get("relation_type"), ""),
+            strength=_coerce_int(payload.get("strength"), 1),
+            evidence_ids=_coerce_str_list(payload.get("evidence_ids")),
+            status=_coerce_str(payload.get("status"), "active"),
+        )
+
+
+@dataclass(slots=True)
+class FocusCluster(JsonSerializable):
+    cluster_id: str
+    profile_space_id: str
+    title: str
+    center_node_id: str
+    neighbor_node_ids: list[str] = field(default_factory=list)
+    focus_reason_codes: list[str] = field(default_factory=list)
+    focus_reason_summary: str = ""
+    generated_from: str = "system"
+    confidence: float = 0.0
+    last_generated_at: str = ""
+    is_pinned: bool = False
+    status: str = "active"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            cluster_id=_coerce_str(payload["cluster_id"]),
+            profile_space_id=_coerce_str(payload["profile_space_id"]),
+            title=_coerce_str(payload.get("title"), ""),
+            center_node_id=_coerce_str(payload.get("center_node_id"), ""),
+            neighbor_node_ids=_coerce_str_list(payload.get("neighbor_node_ids")),
+            focus_reason_codes=_coerce_str_list(payload.get("focus_reason_codes")),
+            focus_reason_summary=_coerce_str(payload.get("focus_reason_summary"), ""),
+            generated_from=_coerce_str(payload.get("generated_from"), "system"),
+            confidence=_coerce_float(payload.get("confidence"), 0.0),
+            last_generated_at=_coerce_str(payload.get("last_generated_at"), ""),
+            is_pinned=_coerce_bool(payload.get("is_pinned"), False),
+            status=_coerce_str(payload.get("status"), "active"),
         )
 
 

@@ -51,8 +51,8 @@ export function WorkbenchLayout() {
             <NavLink to="/mistakes" style={navLinkStyle}>
               Mistakes
             </NavLink>
-            <NavLink to="/knowledge/index" style={navLinkStyle}>
-              Knowledge Index
+            <NavLink to="/knowledge" style={navLinkStyle}>
+              Knowledge
             </NavLink>
             <NavLink to="/knowledge/graph" style={navLinkStyle}>
               Knowledge Graph

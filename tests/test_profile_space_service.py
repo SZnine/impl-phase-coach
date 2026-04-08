@@ -187,3 +187,95 @@ def test_profile_space_service_skips_knowledge_nodes_for_strong_assessment_witho
     assert summary["mistake_count"] == 0
     assert summary["latest_summary"] == "synced strong assessment without durable knowledge additions"
     assert service.list_knowledge_nodes(project_id="proj-1", stage_id="stage-1") == []
+
+
+def test_sync_from_assessment_creates_node_evidence_and_user_state(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    service = ProfileSpaceService.with_store(store)
+
+    result = service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-1",
+            "verdict": "partial",
+            "core_gaps": ["State and return value separation"],
+            "misconceptions": ["Boundary confusion"],
+            "confidence": 0.78,
+        },
+    )
+
+    assert result["knowledge_node_ids"]
+    assert result["evidence_ids"]
+    assert result["user_node_state_ids"]
+
+    nodes = service.list_knowledge_nodes(project_id="proj-1", stage_id="stage-1")
+    assert nodes[0]["label"] == "State and return value separation"
+
+    evidence_refs = service.list_evidence_refs(project_id="proj-1", stage_id="stage-1")
+    assert any(item["node_id"] == result["knowledge_node_ids"][0] for item in evidence_refs)
+    assert all(item["evidence_type"] == "assessment" for item in evidence_refs)
+
+    states = service.list_user_node_states(project_id="proj-1", stage_id="stage-1")
+    matching_state = next(item for item in states if item["node_id"] == result["knowledge_node_ids"][0])
+    assert matching_state["mastery_status"] == "partial"
+    assert matching_state["review_needed"] is True
+
+
+def test_sync_from_assessment_generates_minimal_relations_and_stable_focus_cluster() -> None:
+    service = ProfileSpaceService.for_testing()
+
+    result = service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-2",
+            "verdict": "partial",
+            "core_gaps": ["State and return value separation"],
+            "misconceptions": ["Boundary confusion"],
+            "confidence": 0.81,
+        },
+    )
+
+    relations = service.list_knowledge_relations(project_id="proj-1", stage_id="stage-1")
+    relation_types = {item["relation_type"] for item in relations}
+    assert relation_types == {"abstracts", "causes_mistake"}
+
+    clusters = service.list_focus_clusters(project_id="proj-1", stage_id="stage-1")
+    assert len(clusters) == 1
+    assert clusters[0]["cluster_id"] == result["focus_cluster_ids"][0]
+    assert clusters[0]["center_node_id"] != result["knowledge_node_ids"][0]
+    assert "weak_signal_active" in clusters[0]["focus_reason_codes"]
+
+
+def test_sync_from_assessment_reuses_focus_cluster_for_same_stage_hotspot() -> None:
+    service = ProfileSpaceService.for_testing()
+
+    first = service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-3",
+            "verdict": "partial",
+            "core_gaps": ["Decision awareness"],
+            "misconceptions": ["Boundary confusion"],
+            "confidence": 0.74,
+        },
+    )
+    second = service.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "assessment-4",
+            "verdict": "partial",
+            "core_gaps": ["Decision awareness"],
+            "misconceptions": ["Boundary confusion"],
+            "confidence": 0.88,
+        },
+    )
+
+    clusters = service.list_focus_clusters(project_id="proj-1", stage_id="stage-1")
+    assert len(clusters) == 1
+    assert first["focus_cluster_ids"] == second["focus_cluster_ids"]
+    assert clusters[0]["focus_reason_codes"] == ["current_project_hit", "weak_signal_active"]

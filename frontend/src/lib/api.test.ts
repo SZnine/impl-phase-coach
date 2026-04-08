@@ -75,6 +75,28 @@ describe("createApiClient", () => {
     expect(fetchImpl).toHaveBeenCalledWith("/api/knowledge/graph?project_id=proj-1&stage_id=stage-1", expect.any(Object));
   });
 
+  test("reads knowledge map summary and graph main view from the backend HTTP path", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ focus_clusters: [], nodes: [] }),
+    });
+    const client = createApiClient("/api", fetchImpl as typeof fetch);
+
+    await client.getKnowledgeMapSummaryView("proj-1", "stage-1");
+    await client.getKnowledgeGraphMainView("proj-1", "stage-1");
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "/api/knowledge?project_id=proj-1&stage_id=stage-1",
+      expect.any(Object),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "/api/knowledge/graph-main?project_id=proj-1&stage_id=stage-1",
+      expect.any(Object),
+    );
+  });
+
   test("reads proposals view from the backend HTTP path", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

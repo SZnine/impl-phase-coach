@@ -6,10 +6,14 @@ from review_gate.review_flow_service import ReviewFlowService
 from review_gate.view_dtos import (
     HomeProjectItemDTO,
     HomeViewDTO,
+    FocusClusterCardDTO,
+    KnowledgeGraphMainViewDTO,
     KnowledgeGraphNodeDTO,
     KnowledgeGraphViewDTO,
     KnowledgeIndexItemDTO,
     KnowledgeIndexViewDTO,
+    KnowledgeMapSummaryViewDTO,
+    KnowledgeNodeCardDTO,
     MistakeItemDTO,
     MistakesViewDTO,
     ProjectViewDTO,
@@ -28,6 +32,14 @@ from review_gate.workspace_state_store import JsonWorkspaceStateStore
 
 class WorkspaceAPI:
     _DEFAULT_SESSION_ID = "local-workspace-session"
+    _FOCUS_REASON_PRIORITY = {
+        "weak_signal_active": 0,
+        "current_project_hit": 1,
+        "foundation_hot": 2,
+        "recently_changed": 3,
+        "high_structural_importance": 4,
+        "cross_project_reuse": 5,
+    }
 
     def __init__(
         self,
@@ -258,6 +270,122 @@ class WorkspaceAPI:
             total_count=len(nodes),
         )
 
+    def get_knowledge_map_summary_view(
+        self,
+        project_id: str | None = None,
+        stage_id: str | None = None,
+    ) -> KnowledgeMapSummaryViewDTO:
+        focus_cluster_items = self._profile_space.list_focus_clusters(project_id, stage_id)
+        focus_cluster_items.sort(key=self._focus_cluster_sort_key)
+        focus_clusters = [
+            FocusClusterCardDTO(
+                cluster_id=item["cluster_id"],
+                title=item["title"],
+                center_node_id=item["center_node_id"],
+                neighbor_node_ids=list(item.get("neighbor_node_ids", [])),
+                focus_reason_codes=list(item.get("focus_reason_codes", [])),
+                focus_reason_summary=self._focus_reason_summary(item),
+            )
+            for item in focus_cluster_items
+        ]
+        nodes = self._profile_space.list_map_nodes(project_id, stage_id)
+        states = self._profile_space.list_user_node_states(project_id, stage_id)
+        state_by_node_id = {item["node_id"]: item for item in states}
+
+        current_weak_spots = [
+            node["label"]
+            for node in nodes
+            if state_by_node_id.get(node["node_id"], {}).get("review_needed") is True
+        ]
+        foundation_hotspots = [node["label"] for node in nodes if node["node_type"] == "foundation"]
+        return KnowledgeMapSummaryViewDTO(
+            focus_clusters=focus_clusters,
+            current_weak_spots=current_weak_spots,
+            foundation_hotspots=foundation_hotspots,
+        )
+
+    def get_knowledge_graph_main_view(
+        self,
+        project_id: str | None = None,
+        stage_id: str | None = None,
+        cluster_id: str | None = None,
+        node_id: str | None = None,
+    ) -> KnowledgeGraphMainViewDTO:
+        nodes = self._profile_space.list_map_nodes(project_id, stage_id)
+        states = self._profile_space.list_user_node_states(project_id, stage_id)
+        state_by_node_id = {item["node_id"]: item for item in states}
+        evidence_refs = self._profile_space.list_evidence_refs(project_id, stage_id)
+        evidence_count_by_node_id: dict[str, int] = {}
+        for item in evidence_refs:
+            evidence_count_by_node_id[item["node_id"]] = evidence_count_by_node_id.get(item["node_id"], 0) + 1
+
+        focus_cluster_items = self._profile_space.list_focus_clusters(project_id, stage_id)
+        selected_cluster_item = None
+        if cluster_id is not None:
+            selected_cluster_item = next((item for item in focus_cluster_items if item["cluster_id"] == cluster_id), None)
+        elif node_id is not None:
+            selected_cluster_item = next((item for item in focus_cluster_items if item["center_node_id"] == node_id), None)
+        elif focus_cluster_items:
+            selected_cluster_item = focus_cluster_items[0]
+
+            selected_cluster = (
+            FocusClusterCardDTO(
+                cluster_id=selected_cluster_item["cluster_id"],
+                title=selected_cluster_item["title"],
+                center_node_id=selected_cluster_item["center_node_id"],
+                neighbor_node_ids=list(selected_cluster_item.get("neighbor_node_ids", [])),
+                focus_reason_codes=list(selected_cluster_item.get("focus_reason_codes", [])),
+                focus_reason_summary=self._focus_reason_summary(selected_cluster_item),
+            )
+            if selected_cluster_item is not None
+            else None
+        )
+
+        visible_node_ids: set[str] | None = None
+        if selected_cluster_item is not None:
+            visible_node_ids = {
+                selected_cluster_item["center_node_id"],
+                *list(selected_cluster_item.get("neighbor_node_ids", [])),
+            }
+
+        node_cards = []
+        for item in nodes:
+            if visible_node_ids is not None and item["node_id"] not in visible_node_ids:
+                continue
+            state = state_by_node_id.get(item["node_id"], {})
+            node_cards.append(
+                KnowledgeNodeCardDTO(
+                    node_id=item["node_id"],
+                    label=item["label"],
+                    node_type=item["node_type"],
+                    abstract_level=item["abstract_level"],
+                    scope=item["scope"],
+                    canonical_summary=item["canonical_summary"],
+                    mastery_status=state.get("mastery_status", "unverified"),
+                    review_needed=bool(state.get("review_needed", False)),
+                    relation_preview=[],
+                    evidence_summary={"evidence_count": evidence_count_by_node_id.get(item["node_id"], 0)},
+                )
+            )
+
+        visible_node_id_set = {item.node_id for item in node_cards}
+        relations = [
+            {
+                "relation_id": item["relation_id"],
+                "source_node_id": item["source_node_id"],
+                "target_node_id": item["target_node_id"],
+                "relation_type": item["relation_type"],
+            }
+            for item in self._profile_space.list_knowledge_relations(project_id, stage_id)
+            if item["source_node_id"] in visible_node_id_set and item["target_node_id"] in visible_node_id_set
+        ]
+
+        return KnowledgeGraphMainViewDTO(
+            selected_cluster=selected_cluster,
+            nodes=node_cards,
+            relations=relations,
+        )
+
     def get_proposals_view(self) -> ProposalsViewDTO:
         proposals = self._proposal_center.list_proposals()
         items = [
@@ -303,3 +431,25 @@ class WorkspaceAPI:
             if assessment is not None:
                 self._profile_space.sync_from_assessment(request.project_id, request.stage_id, assessment)
         return response
+
+    def _focus_cluster_sort_key(self, item: dict) -> tuple[int, str]:
+        codes = list(item.get("focus_reason_codes", []))
+        priority = min((self._FOCUS_REASON_PRIORITY.get(code, 99) for code in codes), default=99)
+        return (priority, str(item.get("title", "")))
+
+    def _focus_reason_summary(self, item: dict) -> str:
+        summary = str(item.get("focus_reason_summary", "")).strip()
+        if summary:
+            return summary
+
+        codes = list(item.get("focus_reason_codes", []))
+        label = str(item.get("title", "this cluster")).replace(" hotspot", "")
+        if "weak_signal_active" in codes and "current_project_hit" in codes:
+            return f"This area matters now because the current project hit {label} and it still shows a weak signal."
+        if "weak_signal_active" in codes:
+            return f"This area matters now because {label} still shows a weak signal."
+        if "current_project_hit" in codes:
+            return f"This area matters now because the current project recently hit {label}."
+        if "foundation_hot" in codes:
+            return f"This area matters now because {label} is acting as a foundation hotspot."
+        return f"This area matters now because {label} is part of the current knowledge map focus."

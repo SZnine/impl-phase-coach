@@ -9,10 +9,15 @@ from review_gate.domain import (
     AnswerFact,
     AssessmentFact,
     DecisionFact,
+    EvidenceRef,
+    FocusCluster,
+    KnowledgeNode,
+    KnowledgeRelation,
     ProfileSpace,
     ProjectReview,
     ProposalCenter,
     QuestionSet,
+    UserNodeState,
     WorkspaceEvent,
 )
 
@@ -82,6 +87,75 @@ class SQLiteStore:
 
                 CREATE INDEX IF NOT EXISTS idx_knowledge_node_store_project_stage
                     ON knowledge_node_store(project_id, stage_id);
+
+                CREATE TABLE IF NOT EXISTS knowledge_map_node_store (
+                    node_id TEXT PRIMARY KEY,
+                    profile_space_id TEXT NOT NULL,
+                    node_type TEXT NOT NULL,
+                    abstract_level TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_map_node_store_profile_space
+                    ON knowledge_map_node_store(profile_space_id);
+
+                CREATE TABLE IF NOT EXISTS evidence_ref_store (
+                    evidence_id TEXT PRIMARY KEY,
+                    profile_space_id TEXT NOT NULL,
+                    node_id TEXT NOT NULL,
+                    evidence_type TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_evidence_ref_store_profile_node
+                    ON evidence_ref_store(profile_space_id, node_id);
+
+                CREATE INDEX IF NOT EXISTS idx_evidence_ref_store_project_stage
+                    ON evidence_ref_store(project_id, stage_id);
+
+                CREATE TABLE IF NOT EXISTS user_node_state_store (
+                    profile_space_id TEXT NOT NULL,
+                    node_id TEXT NOT NULL,
+                    activation_status TEXT NOT NULL,
+                    mastery_status TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    PRIMARY KEY (profile_space_id, node_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_user_node_state_store_mastery
+                    ON user_node_state_store(mastery_status);
+
+                CREATE TABLE IF NOT EXISTS knowledge_relation_store (
+                    relation_id TEXT PRIMARY KEY,
+                    profile_space_id TEXT NOT NULL,
+                    source_node_id TEXT NOT NULL,
+                    target_node_id TEXT NOT NULL,
+                    relation_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_relation_store_profile_source
+                    ON knowledge_relation_store(profile_space_id, source_node_id);
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_relation_store_profile_target
+                    ON knowledge_relation_store(profile_space_id, target_node_id);
+
+                CREATE TABLE IF NOT EXISTS focus_cluster_store (
+                    cluster_id TEXT PRIMARY KEY,
+                    profile_space_id TEXT NOT NULL,
+                    center_node_id TEXT NOT NULL,
+                    generated_from TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_focus_cluster_store_profile_space
+                    ON focus_cluster_store(profile_space_id);
 
                 CREATE TABLE IF NOT EXISTS question_set_store (
                     question_set_id TEXT PRIMARY KEY,
@@ -383,6 +457,257 @@ class SQLiteStore:
             project_id=project_id,
             stage_id=stage_id,
         )
+
+    def upsert_knowledge_node(self, node: KnowledgeNode) -> None:
+        payload = node.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO knowledge_map_node_store (
+                    node_id,
+                    profile_space_id,
+                    node_type,
+                    abstract_level,
+                    scope,
+                    status,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    node.node_id,
+                    node.profile_space_id,
+                    node.node_type,
+                    node.abstract_level,
+                    node.scope,
+                    node.status,
+                    payload,
+                ),
+            )
+
+    def get_knowledge_node(self, node_id: str) -> KnowledgeNode | None:
+        row = self._fetch_one(
+            "SELECT payload FROM knowledge_map_node_store WHERE node_id = ?",
+            (node_id,),
+        )
+        if row is None:
+            return None
+        return KnowledgeNode.from_json(row["payload"])
+
+    def list_knowledge_nodes(self, profile_space_id: str | None = None) -> list[KnowledgeNode]:
+        if profile_space_id is None:
+            rows = self._fetch_all(
+                "SELECT payload FROM knowledge_map_node_store ORDER BY node_id",
+                (),
+            )
+        else:
+            rows = self._fetch_all(
+                "SELECT payload FROM knowledge_map_node_store WHERE profile_space_id = ? ORDER BY node_id",
+                (profile_space_id,),
+            )
+        return [KnowledgeNode.from_json(row["payload"]) for row in rows]
+
+    def upsert_evidence_ref(self, evidence_ref: EvidenceRef) -> None:
+        payload = evidence_ref.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO evidence_ref_store (
+                    evidence_id,
+                    profile_space_id,
+                    node_id,
+                    evidence_type,
+                    project_id,
+                    stage_id,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    evidence_ref.evidence_id,
+                    evidence_ref.profile_space_id,
+                    evidence_ref.node_id,
+                    evidence_ref.evidence_type,
+                    evidence_ref.project_id,
+                    evidence_ref.stage_id,
+                    payload,
+                ),
+            )
+
+    def list_evidence_refs(
+        self,
+        profile_space_id: str | None = None,
+        node_id: str | None = None,
+        project_id: str | None = None,
+        stage_id: str | None = None,
+    ) -> list[EvidenceRef]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if profile_space_id is not None:
+            clauses.append("profile_space_id = ?")
+            params.append(profile_space_id)
+        if node_id is not None:
+            clauses.append("node_id = ?")
+            params.append(node_id)
+        if project_id is not None:
+            clauses.append("project_id = ?")
+            params.append(project_id)
+        if stage_id is not None:
+            clauses.append("stage_id = ?")
+            params.append(stage_id)
+        where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self._fetch_all(
+            f"SELECT payload FROM evidence_ref_store{where_clause} ORDER BY evidence_id",
+            tuple(params),
+        )
+        return [EvidenceRef.from_json(row["payload"]) for row in rows]
+
+    def upsert_user_node_state(self, state: UserNodeState) -> None:
+        payload = state.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO user_node_state_store (
+                    profile_space_id,
+                    node_id,
+                    activation_status,
+                    mastery_status,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    state.profile_space_id,
+                    state.node_id,
+                    state.activation_status,
+                    state.mastery_status,
+                    payload,
+                ),
+            )
+
+    def get_user_node_state(self, profile_space_id: str, node_id: str) -> UserNodeState | None:
+        row = self._fetch_one(
+            """
+            SELECT payload FROM user_node_state_store
+            WHERE profile_space_id = ? AND node_id = ?
+            """,
+            (profile_space_id, node_id),
+        )
+        if row is None:
+            return None
+        return UserNodeState.from_json(row["payload"])
+
+    def list_user_node_states(self, profile_space_id: str | None = None) -> list[UserNodeState]:
+        if profile_space_id is None:
+            rows = self._fetch_all(
+                "SELECT payload FROM user_node_state_store ORDER BY node_id",
+                (),
+            )
+        else:
+            rows = self._fetch_all(
+                """
+                SELECT payload FROM user_node_state_store
+                WHERE profile_space_id = ?
+                ORDER BY node_id
+                """,
+                (profile_space_id,),
+            )
+        return [UserNodeState.from_json(row["payload"]) for row in rows]
+
+    def upsert_knowledge_relation(self, relation: KnowledgeRelation) -> None:
+        payload = relation.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO knowledge_relation_store (
+                    relation_id,
+                    profile_space_id,
+                    source_node_id,
+                    target_node_id,
+                    relation_type,
+                    status,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    relation.relation_id,
+                    relation.profile_space_id,
+                    relation.source_node_id,
+                    relation.target_node_id,
+                    relation.relation_type,
+                    relation.status,
+                    payload,
+                ),
+            )
+
+    def list_knowledge_relations(
+        self,
+        profile_space_id: str | None = None,
+        source_node_id: str | None = None,
+        target_node_id: str | None = None,
+        relation_type: str | None = None,
+    ) -> list[KnowledgeRelation]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if profile_space_id is not None:
+            clauses.append("profile_space_id = ?")
+            params.append(profile_space_id)
+        if source_node_id is not None:
+            clauses.append("source_node_id = ?")
+            params.append(source_node_id)
+        if target_node_id is not None:
+            clauses.append("target_node_id = ?")
+            params.append(target_node_id)
+        if relation_type is not None:
+            clauses.append("relation_type = ?")
+            params.append(relation_type)
+        where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self._fetch_all(
+            f"SELECT payload FROM knowledge_relation_store{where_clause} ORDER BY relation_id",
+            tuple(params),
+        )
+        return [KnowledgeRelation.from_json(row["payload"]) for row in rows]
+
+    def upsert_focus_cluster(self, cluster: FocusCluster) -> None:
+        payload = cluster.to_json()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO focus_cluster_store (
+                    cluster_id,
+                    profile_space_id,
+                    center_node_id,
+                    generated_from,
+                    status,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    cluster.cluster_id,
+                    cluster.profile_space_id,
+                    cluster.center_node_id,
+                    cluster.generated_from,
+                    cluster.status,
+                    payload,
+                ),
+            )
+
+    def list_focus_clusters(
+        self,
+        profile_space_id: str | None = None,
+        status: str | None = None,
+    ) -> list[FocusCluster]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if profile_space_id is not None:
+            clauses.append("profile_space_id = ?")
+            params.append(profile_space_id)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self._fetch_all(
+            f"SELECT payload FROM focus_cluster_store{where_clause} ORDER BY cluster_id",
+            tuple(params),
+        )
+        return [FocusCluster.from_json(row["payload"]) for row in rows]
 
     def upsert_question_set(self, question_set: QuestionSet) -> None:
         payload = question_set.to_json()

@@ -173,6 +173,43 @@ def test_http_api_returns_knowledge_graph_view() -> None:
     assert data["nodes"][0]["node_type"] == "decision"
 
 
+def test_http_api_returns_knowledge_map_summary_and_graph_main_views() -> None:
+    client = create_client()
+    client.post(
+        "/api/actions/submit-answer",
+        json={
+            "request_id": "req-km",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "question_detail",
+            "actor_id": "local-user",
+            "created_at": "2026-04-03T00:00:00Z",
+            "question_set_id": "set-1",
+            "question_id": "set-1-q-1",
+            "answer_text": "This answer is long enough to avoid the weak fallback verdict.",
+            "draft_id": None,
+        },
+    )
+
+    summary = client.get("/api/knowledge", params={"project_id": "proj-1", "stage_id": "stage-1"})
+    graph = client.get("/api/knowledge/graph-main", params={"project_id": "proj-1", "stage_id": "stage-1"})
+
+    assert summary.status_code == 200
+    summary_data = summary.json()
+    assert summary_data["focus_clusters"]
+    assert "current_weak_spots" in summary_data
+    assert "foundation_hotspots" in summary_data
+    assert "evidence_refs" not in summary_data
+    assert "answers" not in summary_data
+
+    assert graph.status_code == 200
+    graph_data = graph.json()
+    assert graph_data["selected_cluster"] is not None
+    assert graph_data["nodes"]
+    assert graph_data["nodes"][0]["mastery_status"] == "partial"
+    assert all(":evidence-" not in node["node_id"] for node in graph_data["nodes"])
+
+
 def test_http_api_returns_proposals_view() -> None:
     proposal_center = ProposalCenterService.for_testing()
     proposal_center.create_compression_proposals(

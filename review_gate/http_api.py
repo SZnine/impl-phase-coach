@@ -76,9 +76,22 @@ def create_app(api: WorkspaceAPI | None = None, db_path: Path | None = None) -> 
     def get_knowledge_index_view(project_id: str | None = None, stage_id: str | None = None) -> dict:
         return workspace_api.get_knowledge_index_view(project_id, stage_id).model_dump()
 
+    @app.get("/api/knowledge")
+    def get_knowledge_map_summary_view(project_id: str | None = None, stage_id: str | None = None) -> dict:
+        return workspace_api.get_knowledge_map_summary_view(project_id, stage_id).model_dump()
+
     @app.get("/api/knowledge/graph")
     def get_knowledge_graph_view(project_id: str | None = None, stage_id: str | None = None) -> dict:
         return workspace_api.get_knowledge_graph_view(project_id, stage_id).model_dump()
+
+    @app.get("/api/knowledge/graph-main")
+    def get_knowledge_graph_main_view(
+        project_id: str | None = None,
+        stage_id: str | None = None,
+        cluster_id: str | None = None,
+        node_id: str | None = None,
+    ) -> dict:
+        return workspace_api.get_knowledge_graph_main_view(project_id, stage_id, cluster_id, node_id).model_dump()
 
     @app.get("/api/proposals")
     def get_proposals_view() -> dict:

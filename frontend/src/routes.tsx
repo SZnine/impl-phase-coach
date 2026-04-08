@@ -4,6 +4,7 @@ import { WorkbenchLayout } from "./components/WorkbenchLayout";
 import { HomePage } from "./pages/HomePage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { KnowledgeIndexPage } from "./pages/KnowledgeIndexPage";
+import { KnowledgeMapPage } from "./pages/KnowledgeMapPage";
 import { MistakesPage } from "./pages/MistakesPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProposalsPage } from "./pages/ProposalsPage";
@@ -29,6 +30,7 @@ export const router = createBrowserRouter(
           element: <QuestionPage />,
         },
         { path: "mistakes", element: <MistakesPage /> },
+        { path: "knowledge", element: <KnowledgeMapPage /> },
         { path: "knowledge/index", element: <KnowledgeIndexPage /> },
         { path: "knowledge/graph", element: <KnowledgeGraphPage /> },
         { path: "proposals", element: <ProposalsPage /> },

@@ -6,9 +6,12 @@ from review_gate.proposal_center_service import ProposalCenterService
 from review_gate.review_flow_service import ReviewFlowService
 from review_gate.view_dtos import (
     AssessmentSummaryDTO,
+    FocusClusterCardDTO,
     HomeProjectItemDTO,
+    KnowledgeGraphMainViewDTO,
     KnowledgeGraphNodeDTO,
     KnowledgeIndexItemDTO,
+    KnowledgeMapSummaryViewDTO,
     MistakeItemDTO,
     ProposalItemDTO,
     ProjectViewDTO,
@@ -191,6 +194,71 @@ def test_workspace_api_returns_knowledge_graph_view() -> None:
     assert graph_view.total_count == 1
     assert isinstance(graph_view.nodes[0], KnowledgeGraphNodeDTO)
     assert graph_view.nodes[0].label == "Decision awareness"
+
+
+def test_workspace_api_returns_knowledge_map_summary_and_graph_main_view() -> None:
+    profile_space = ProfileSpaceService.for_testing()
+    profile_space.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "a-km-1",
+            "verdict": "partial",
+            "core_gaps": ["State and return value separation"],
+            "misconceptions": ["Boundary confusion"],
+            "confidence": 0.78,
+        },
+    )
+    api = WorkspaceAPI(flow=ReviewFlowService.for_testing(), profile_space=profile_space)
+
+    summary_view = api.get_knowledge_map_summary_view(project_id="proj-1", stage_id="stage-1")
+    graph_main_view = api.get_knowledge_graph_main_view(project_id="proj-1", stage_id="stage-1")
+
+    assert isinstance(summary_view, KnowledgeMapSummaryViewDTO)
+    assert summary_view.focus_clusters
+    assert isinstance(summary_view.focus_clusters[0], FocusClusterCardDTO)
+    assert "State and return value separation" in summary_view.current_weak_spots
+    assert isinstance(summary_view.foundation_hotspots, list)
+
+    assert isinstance(graph_main_view, KnowledgeGraphMainViewDTO)
+    assert graph_main_view.selected_cluster is not None
+    assert graph_main_view.nodes
+    assert graph_main_view.nodes[0].label == "State and return value separation"
+    assert graph_main_view.nodes[0].mastery_status == "partial"
+
+
+def test_workspace_api_sorts_focus_clusters_by_reason_priority() -> None:
+    profile_space = ProfileSpaceService.for_testing()
+    profile_space.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "a-km-strong",
+            "verdict": "strong",
+            "core_gaps": ["Encoding boundary"],
+            "misconceptions": [],
+            "confidence": 0.62,
+        },
+    )
+    profile_space.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "a-km-partial",
+            "verdict": "partial",
+            "core_gaps": ["State and return value separation"],
+            "misconceptions": ["Boundary confusion"],
+            "confidence": 0.84,
+        },
+    )
+    api = WorkspaceAPI(flow=ReviewFlowService.for_testing(), profile_space=profile_space)
+
+    summary_view = api.get_knowledge_map_summary_view(project_id="proj-1", stage_id="stage-1")
+
+    assert len(summary_view.focus_clusters) == 2
+    assert summary_view.focus_clusters[0].title == "State and return value separation hotspot"
+    assert "weak_signal_active" in summary_view.focus_clusters[0].focus_reason_codes
+    assert summary_view.focus_clusters[1].title == "Encoding boundary hotspot"
 
 
 def test_workspace_api_returns_proposals_view() -> None:

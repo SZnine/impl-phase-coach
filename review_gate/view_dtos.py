@@ -130,6 +130,44 @@ class KnowledgeGraphViewDTO(TransportModel):
 
 
 @dataclass(slots=True)
+class FocusClusterCardDTO(TransportModel):
+    cluster_id: str
+    title: str
+    center_node_id: str
+    neighbor_node_ids: list[str] = field(default_factory=list)
+    focus_reason_codes: list[str] = field(default_factory=list)
+    focus_reason_summary: str = ""
+
+
+@dataclass(slots=True)
+class KnowledgeMapSummaryViewDTO(TransportModel):
+    focus_clusters: list[FocusClusterCardDTO] = field(default_factory=list)
+    current_weak_spots: list[str] = field(default_factory=list)
+    foundation_hotspots: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class KnowledgeNodeCardDTO(TransportModel):
+    node_id: str
+    label: str
+    node_type: str
+    abstract_level: str
+    scope: str
+    canonical_summary: str
+    mastery_status: str
+    review_needed: bool
+    relation_preview: list[dict[str, str]] = field(default_factory=list)
+    evidence_summary: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class KnowledgeGraphMainViewDTO(TransportModel):
+    selected_cluster: FocusClusterCardDTO | None = None
+    nodes: list[KnowledgeNodeCardDTO] = field(default_factory=list)
+    relations: list[dict[str, str]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class ProposalItemDTO(TransportModel):
     proposal_id: str
     proposal_type: str

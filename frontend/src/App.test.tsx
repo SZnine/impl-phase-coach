@@ -32,7 +32,7 @@ test("renders workbench navigation", () => {
 
   expect(screen.getByRole("link", { name: "Projects" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Mistakes" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Knowledge Index" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Knowledge" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Knowledge Graph" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Proposals" })).toBeInTheDocument();
 });
@@ -46,6 +46,6 @@ test("registers the project -> stage -> question route hierarchy", () => {
   expect(childPaths).toContain("projects/:projectId/stages/:stageId");
   expect(childPaths).toContain("projects/:projectId/stages/:stageId/questions/:questionSetId");
   expect(childPaths).toContain("projects/:projectId/stages/:stageId/questions/:questionSetId/:questionId");
-  expect(childPaths).toContain("knowledge/index");
+  expect(childPaths).toContain("knowledge");
   expect(childPaths).toContain("knowledge/graph");
 });

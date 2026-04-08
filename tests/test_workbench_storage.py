@@ -10,11 +10,16 @@ from review_gate.domain import (
     AnswerFact,
     AssessmentFact,
     DecisionFact,
+    EvidenceRef,
+    FocusCluster,
+    KnowledgeNode,
+    KnowledgeRelation,
     ProfileSpace,
     ProjectReview,
     ProposalCenter,
     QuestionSet,
     StageReview,
+    UserNodeState,
     WorkspaceEvent,
     WorkspaceSession,
 )
@@ -234,6 +239,81 @@ def test_sqlite_store_round_trips_durable_facts(tmp_path: Path) -> None:
     assert store.list_answer_facts("proj-1", "stage-1") == [answer]
     assert store.list_assessment_facts("proj-1", "stage-1") == [assessment]
     assert store.list_decision_facts("proj-1", "stage-1") == [decision]
+
+
+def test_sqlite_store_round_trips_knowledge_map_objects(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+
+    node = KnowledgeNode(
+        node_id="node-1",
+        profile_space_id="profile-space:proj-1",
+        label="State and return value separation",
+        node_type="concept",
+        abstract_level="L2",
+        scope="universal",
+        canonical_summary="Separate persisted state from function return values.",
+        source_refs=["assessment-1"],
+        seed_or_generated="generated",
+        status="active",
+    )
+    evidence = EvidenceRef(
+        evidence_id="evidence-1",
+        profile_space_id="profile-space:proj-1",
+        node_id="node-1",
+        evidence_type="assessment",
+        ref_id="assessment-1",
+        project_id="proj-1",
+        stage_id="stage-1",
+        summary="Assessment exposed boundary confusion.",
+    )
+    state = UserNodeState(
+        profile_space_id="profile-space:proj-1",
+        node_id="node-1",
+        activation_status="active",
+        mastery_status="partial",
+        review_needed=True,
+        weak_signal_count=2,
+        linked_project_count=1,
+        last_seen_at="2026-04-08T16:00:00Z",
+        confidence=0.72,
+    )
+    relation = KnowledgeRelation(
+        relation_id="relation-1",
+        profile_space_id="profile-space:proj-1",
+        source_node_id="node-1",
+        target_node_id="node-2",
+        relation_type="supports",
+        strength=2,
+        evidence_ids=["evidence-1"],
+        status="active",
+    )
+    cluster = FocusCluster(
+        cluster_id="cluster-1",
+        profile_space_id="profile-space:proj-1",
+        title="State boundary hotspot",
+        center_node_id="node-1",
+        neighbor_node_ids=["node-2", "node-3"],
+        focus_reason_codes=["current_project_hit", "weak_signal_active"],
+        focus_reason_summary="Current stage exposed a repeated boundary weakness.",
+        generated_from="current_project",
+        confidence=0.81,
+        last_generated_at="2026-04-08T16:05:00Z",
+        is_pinned=False,
+        status="active",
+    )
+
+    store.upsert_knowledge_node(node)
+    store.upsert_evidence_ref(evidence)
+    store.upsert_user_node_state(state)
+    store.upsert_knowledge_relation(relation)
+    store.upsert_focus_cluster(cluster)
+
+    assert store.get_knowledge_node("node-1") == node
+    assert store.list_evidence_refs(node_id="node-1") == [evidence]
+    assert store.get_user_node_state("profile-space:proj-1", "node-1") == state
+    assert store.list_knowledge_relations(source_node_id="node-1") == [relation]
+    assert store.list_focus_clusters(profile_space_id="profile-space:proj-1") == [cluster]
 
 
 def test_sqlite_store_round_trips_profile_space_entries(

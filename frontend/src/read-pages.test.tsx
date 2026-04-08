@@ -9,9 +9,13 @@ import { vi } from "vitest";
 import {
   ApiClientProvider,
   type ApiClient,
+  type FocusClusterCardDTO,
   type HomeViewDTO,
+  type KnowledgeGraphMainViewDTO,
   type KnowledgeGraphViewDTO,
   type KnowledgeIndexViewDTO,
+  type KnowledgeMapSummaryViewDTO,
+  type KnowledgeNodeCardDTO,
   type MistakesViewDTO,
   type ProjectViewDTO,
   type ProposalActionResponseDTO,
@@ -22,6 +26,7 @@ import {
   type SubmitAnswerResponseDTO,
 } from "./lib/api";
 import { HomePage } from "./pages/HomePage";
+import { KnowledgeMapPage } from "./pages/KnowledgeMapPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { KnowledgeIndexPage } from "./pages/KnowledgeIndexPage";
 import { MistakesPage } from "./pages/MistakesPage";
@@ -42,6 +47,7 @@ function renderWithClient(ui: ReactElement, client: ApiClient, path: string) {
           <Route path="/projects/:projectId/stages/:stageId/questions/:questionSetId" element={ui} />
           <Route path="/projects/:projectId/stages/:stageId/questions/:questionSetId/:questionId" element={ui} />
           <Route path="/mistakes" element={ui} />
+          <Route path="/knowledge" element={ui} />
           <Route path="/knowledge/index" element={ui} />
           <Route path="/knowledge/graph" element={ui} />
           <Route path="/proposals" element={ui} />
@@ -144,6 +150,60 @@ const knowledgeGraphView: KnowledgeGraphViewDTO = {
       linked_mistake_ids: ["proj-1:stage-1:a-1:mistake-1"],
       summary: "Derived from partial assessment in stage-1.",
       status: "active",
+    },
+  ],
+};
+
+const focusClusterCard: FocusClusterCardDTO = {
+  cluster_id: "cluster-1",
+  title: "State boundary hotspot",
+  center_node_id: "node-1",
+  neighbor_node_ids: ["node-2"],
+  focus_reason_codes: ["current_project_hit", "weak_signal_active"],
+  focus_reason_summary: "Current stage exposed a repeated boundary weakness.",
+};
+
+const knowledgeMapSummaryView: KnowledgeMapSummaryViewDTO = {
+  focus_clusters: [focusClusterCard],
+  current_weak_spots: ["State and return value separation"],
+  foundation_hotspots: [],
+};
+
+const knowledgeGraphMainNode: KnowledgeNodeCardDTO = {
+  node_id: "node-1",
+  label: "State and return value separation",
+  node_type: "concept",
+  abstract_level: "L1",
+  scope: "project-bound",
+  canonical_summary: "Derived from partial assessment in stage-1.",
+  mastery_status: "partial",
+  review_needed: true,
+  relation_preview: [],
+  evidence_summary: { evidence_count: 1 },
+};
+
+const knowledgeGraphMainNeighborNode: KnowledgeNodeCardDTO = {
+  node_id: "node-2",
+  label: "Boundary confusion",
+  node_type: "mistake",
+  abstract_level: "L1",
+  scope: "personal",
+  canonical_summary: "Repeated misconception around the current boundary.",
+  mastery_status: "partial",
+  review_needed: true,
+  relation_preview: [],
+  evidence_summary: { evidence_count: 1 },
+};
+
+const knowledgeGraphMainView: KnowledgeGraphMainViewDTO = {
+  selected_cluster: focusClusterCard,
+  nodes: [knowledgeGraphMainNode, knowledgeGraphMainNeighborNode],
+  relations: [
+    {
+      relation_id: "relation-1",
+      source_node_id: "node-1",
+      target_node_id: "node-2",
+      relation_type: "causes_mistake",
     },
   ],
 };
@@ -269,7 +329,9 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
     getProjectView: vi.fn().mockResolvedValue(projectView),
     getStageView: vi.fn().mockResolvedValue(stageView),
     getMistakesView: vi.fn().mockResolvedValue(mistakesView),
+    getKnowledgeMapSummaryView: vi.fn().mockResolvedValue(knowledgeMapSummaryView),
     getKnowledgeGraphView: vi.fn().mockResolvedValue(knowledgeGraphView),
+    getKnowledgeGraphMainView: vi.fn().mockResolvedValue(knowledgeGraphMainView),
     getKnowledgeIndexView: vi.fn().mockResolvedValue(knowledgeIndexView),
     getProposalsView: vi.fn().mockResolvedValue(proposalsView),
     submitProposalAction: vi.fn().mockResolvedValue({
@@ -362,15 +424,49 @@ test("MistakesPage renders loaded mistake entries and not the shell placeholder"
   expect(screen.queryByText("Empty shell for mistake tracking.")).not.toBeInTheDocument();
 });
 
+test("KnowledgeMapPage renders focus clusters and summary entry points", async () => {
+  renderWithClient(<KnowledgeMapPage />, createClient(), "/knowledge");
+
+  expect(screen.getByText("Loading knowledge map summary...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Knowledge Map" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "State boundary hotspot" })).toBeInTheDocument();
+  expect(screen.getByText("State and return value separation")).toBeInTheDocument();
+  expect(screen.getByText("Why it matters")).toBeInTheDocument();
+  expect(screen.getByText("Current stage exposed a repeated boundary weakness.")).toBeInTheDocument();
+  expect(screen.getByText("Current Project Hit")).toBeInTheDocument();
+  expect(screen.getByText("Weak Signal Active")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Open map cluster" })).toHaveAttribute(
+    "href",
+    "/knowledge/graph?cluster=cluster-1",
+  );
+});
+
+test("KnowledgeGraphPage renders graph main view instead of the legacy graph shell", async () => {
+  renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
+
+  expect(screen.getByText("Loading knowledge graph view...")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Knowledge Graph" })).toBeInTheDocument();
+  expect(screen.getByText("Selected cluster")).toBeInTheDocument();
+  expect(screen.getByText("Map preview")).toBeInTheDocument();
+  expect(screen.getByText("State boundary hotspot")).toBeInTheDocument();
+  expect(screen.getAllByText("State and return value separation").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getAllByText("Boundary confusion").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getAllByText("Mastery: partial")).toHaveLength(2);
+});
+
 test("KnowledgeGraphPage renders loaded graph nodes and not a shell placeholder", async () => {
   renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
 
   expect(screen.getByText("Loading knowledge graph view...")).toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "Knowledge Graph" })).toBeInTheDocument();
-  expect(screen.getByText("Total nodes: 1")).toBeInTheDocument();
-  expect(screen.getByText("Decision awareness")).toBeInTheDocument();
+  expect(screen.getByText("Selected cluster")).toBeInTheDocument();
+  expect(screen.getByText("State boundary hotspot")).toBeInTheDocument();
+  expect(screen.getAllByText("State and return value separation").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getAllByText("Boundary confusion").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("Derived from partial assessment in stage-1.")).toBeInTheDocument();
-  expect(screen.getByText("Linked mistakes: proj-1:stage-1:a-1:mistake-1")).toBeInTheDocument();
+  expect(screen.getAllByText("Evidence: 1")).toHaveLength(2);
+  expect(screen.getByText("Connections")).toBeInTheDocument();
+  expect(screen.getByText("causes mistake")).toBeInTheDocument();
 });
 
 test("KnowledgeIndexPage renders loaded index entries and not a shell placeholder", async () => {
