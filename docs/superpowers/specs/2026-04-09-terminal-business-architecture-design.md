@@ -1401,3 +1401,208 @@ flowchart LR
 1. `旧主链 -> 新主链` 的模块级迁移图
 2. 哪些对象是 `append-only`
 3. 哪些对象是 `mutable current state`
+
+---
+
+## 21. 对象级写入策略：append-only / mutable current state / versioned derived state
+
+这一节的目标不是继续补对象字段，而是冻结：
+
+`五层对象各自应该按什么写入策略长期演化。`
+
+当前结论是：
+
+`终态不适合只做二分。最稳的方式是三分法：append-only history / mutable current state / versioned derived state。`
+
+### 21.1 三分法定义
+
+#### A. append-only history
+这类对象代表：
+1. 某次真实发生过的请求
+2. 某次真实问过的题
+3. 某次真实给出的回答
+4. 某次真实做出的评判
+5. 某次真实整理出的 facts
+
+它们默认应追加，不直接覆盖旧记录。
+
+#### B. mutable current state
+这类对象代表：
+1. 当前有效状态
+2. 当前对用户最有价值的读面状态
+3. 当前可以被更新替换，而不要求每次都新增完整对象版本
+
+#### C. versioned derived state
+这类对象代表：
+1. 由上游历史层派生而来
+2. 会随着整理/压缩/重构产生新版本
+3. 不应作为单条 current row 原地覆盖
+
+Knowledge Graph 最核心的版本化派生对象就属于这一类。
+
+### 21.2 append-only history 对象
+
+#### Workflow Layer
+1. `WorkflowRequest`
+2. `WorkflowRun`
+3. `WorkflowStepExecution`
+4. `MaintenanceRequest`
+
+原因：
+这些对象本质上都是历史事件记录。  
+即使带 `status`，它们也不应该被覆盖成另一件事。
+
+#### Problem / Answer Layer
+1. `QuestionBatch`
+2. `QuestionItem`
+3. `AnswerBatch`
+4. `AnswerItem`
+
+原因：
+题是什么、答了什么，都是历史真相。  
+允许 supersede/ref，但不应抹掉旧题旧答。
+
+#### Evaluation Layer
+1. `EvaluationBatch`
+2. `EvaluationItem`
+3. `EvidenceSpan`
+
+原因：
+评判也是历史判断。  
+模型升级后应追加新评判，而不是覆盖旧评判。
+
+#### Assessment Facts Layer
+1. `AssessmentFactBatch`
+2. `AssessmentFactItem`
+3. `MistakeRecord`
+4. `KnowledgeSignal`
+
+原因：
+facts/signal 是“某次评判整理出的结构化事实快照”。  
+后续理解变化，也应新增新版本，而不是抹掉旧 facts。
+
+#### Knowledge Graph Layer 中同样属于 append-only history 的对象
+1. `GraphRewriteRecord`
+
+原因：
+它记录的是一次真实发生过的图谱改写行为，本质上是治理历史。
+
+### 21.3 mutable current state 对象
+
+#### Knowledge Graph Layer
+1. `UserNodeState`
+2. `FocusCluster`
+3. `FocusExplanation`
+
+原因：
+这三类对象本质都回答“当前”：
+1. 当前掌握度
+2. 当前优先片区
+3. 当前 why-it-matters
+
+它们应该允许更新替换，而不是每次都要求新建完整版本对象。
+
+但这里有一个限制：
+
+`mutable current state 不等于裸更新。`
+
+仍建议它们保留：
+1. supersede/ref
+2. provenance ref
+3. 与 active revision 的关联
+
+### 21.4 versioned derived state 对象
+
+#### Knowledge Graph Layer
+1. `GraphRevision`
+2. `KnowledgeNode`
+3. `KnowledgeRelation`
+
+原因：
+这三类对象代表的是：
+1. 某一版图
+2. 某一版图中的节点
+3. 某一版图中的关系
+
+它们应该随 revision 新增，而不是在一条 current row 上原地覆盖。
+
+冻结规则：
+1. 新 revision 生成时，新增一批 node/relation
+2. 旧 revision 保留
+3. active revision 决定当前前端和系统默认读取哪一版图
+
+### 21.5 逐对象冻结表
+
+#### append-only history
+1. `WorkflowRequest`
+2. `WorkflowRun`
+3. `WorkflowStepExecution`
+4. `MaintenanceRequest`
+5. `QuestionBatch`
+6. `QuestionItem`
+7. `AnswerBatch`
+8. `AnswerItem`
+9. `EvaluationBatch`
+10. `EvaluationItem`
+11. `EvidenceSpan`
+12. `AssessmentFactBatch`
+13. `AssessmentFactItem`
+14. `MistakeRecord`
+15. `KnowledgeSignal`
+16. `GraphRewriteRecord`
+
+#### mutable current state
+1. `UserNodeState`
+2. `FocusCluster`
+3. `FocusExplanation`
+
+#### versioned derived state
+1. `GraphRevision`
+2. `KnowledgeNode`
+3. `KnowledgeRelation`
+
+### 21.6 当前最容易写歪的地方
+
+#### 1. 把 `UserNodeState` 做成 append-only 历史表
+问题：
+1. 当前读面会变重
+2. 每次都要重新聚合“当前状态”
+
+更稳的方式：
+1. `UserNodeState` 保持 current state
+2. 如果后面要历史轨迹，再补专门的 state history/event
+
+#### 2. 把 `KnowledgeNode / KnowledgeRelation` 做成全局 current row
+问题：
+1. graph rewrite 很难审计
+2. 无法稳定表达“这一版图”和“上一版图”的差异
+
+更稳的方式：
+1. 节点和关系挂到 `GraphRevision`
+2. 通过 active revision 切换当前图
+
+#### 3. 把 `AssessmentFactItem / KnowledgeSignal` 做成可覆盖
+问题：
+1. facts 层会丢历史真相
+2. 后面会分不清“当前图为什么长成这样”
+
+更稳的方式：
+1. facts / signal 一律追加
+2. graph 吃它们，但不抹去它们
+
+### 21.7 当前冻结结论
+
+#### 当前推荐规则
+1. Workflow / Problem-Answer / Evaluation / Assessment Facts 基本都应 append-only
+2. `UserNodeState / FocusCluster / FocusExplanation` 属于 mutable current state
+3. `GraphRevision / KnowledgeNode / KnowledgeRelation` 属于 versioned derived state
+
+#### 当前仍不做
+1. 不在这里定义具体 SQL 表结构
+2. 不在这里定义 current pointer 的索引策略
+3. 不在这里定义 graph layout 的版本策略
+
+#### 当前建议的下一步
+基于这套写入策略，继续细化：
+1. 第一版数据库 schema 轮廓
+2. active revision / current state pointer 应该如何表达
