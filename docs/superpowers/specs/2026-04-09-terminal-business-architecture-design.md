@@ -1218,6 +1218,52 @@ Knowledge Graph 的唯一反哺形式是：
 
 ### 20.3 模块级迁移判断：保留 / 保留外壳重写内部 / 被替代
 
+#### 模块级迁移图
+
+```mermaid
+flowchart LR
+    subgraph OLD[当前旧主链]
+        WA[workspace_api.py]
+        RF[review_flow_service.py]
+        PS[profile_space_service.py]
+        HTTP[http_api.py]
+        STORE[storage_sqlite.py]
+        UI[frontend knowledge pages]
+    end
+
+    subgraph NEW[终态新主链]
+        WC[Workflow Coordinator]
+        QSM[Question Session Manager]
+        PA[Project Agent Adapter]
+        EA[Evaluator Agent Adapter]
+        ASY[Assessment Synthesizer]
+        GRS[Graph Read Service]
+        KMA[Knowledge Maintenance Service]
+        REPO[Layered Repositories\nWorkflow / Problem-Answer / Evaluation / Facts / Graph]
+    end
+
+    WA -->|拆壳| WC
+    WA -->|读面职责迁移| GRS
+    WA -->|过渡期保留 facade| WA
+
+    RF -->|出题职责迁移| PA
+    RF -->|评判职责迁移| EA
+    RF -->|答题会话职责迁移| QSM
+
+    PS -->|旧 assessment->graph 投影退出主链| ASY
+    PS -->|图谱投影能力保留一部分| KMA
+    PS -->|图读模型部分沉到| GRS
+
+    HTTP -->|保留外层入口| HTTP
+    HTTP -->|路由到| WC
+    HTTP -->|图查询走| GRS
+
+    STORE -->|保留底座，语义分层| REPO
+
+    UI -->|兼容期继续读| WA
+    UI -->|逐步切换到| GRS
+```
+
 #### A. 可直接保留的骨架
 1. `KnowledgeNode / KnowledgeRelation / UserNodeState / FocusCluster / FocusExplanation` 的概念分层
 2. explanation cache 与 generator 分离
