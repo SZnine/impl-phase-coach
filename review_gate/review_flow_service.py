@@ -4,6 +4,18 @@ from dataclasses import dataclass
 
 from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.agent_clients import AssessmentAgentClient, QuestionGenerationAgentClient
+from review_gate.assessment_synthesizer import AssessmentSynthesizer
+from review_gate.checkpoint_models import (
+    AnswerBatchRecord,
+    AnswerItemRecord,
+    WorkflowRequestRecord,
+    WorkflowRunRecord,
+    EvaluationBatchRecord,
+    EvaluationItemRecord,
+    EvidenceSpanRecord,
+    QuestionBatchRecord,
+    QuestionItemRecord,
+)
 from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, StageReview
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
@@ -84,6 +96,7 @@ class ReviewFlowService:
     ) -> None:
         self._question_generation_client = question_generation_client or QuestionGenerationAgentClient.for_testing()
         self._assessment_client = assessment_client or AssessmentAgentClient.for_testing()
+        self._assessment_synthesizer = AssessmentSynthesizer()
         self._store = store
         self._stage_mastery_status: dict[tuple[str, str], str] = {}
         self._latest_assessments: dict[tuple[str, str], dict] = {}
@@ -242,7 +255,10 @@ class ReviewFlowService:
         )
 
     def generate_question_set(self, request: dict) -> dict:
-        return self._question_generation_client.generate(request)
+        response = self._question_generation_client.generate(request)
+        if self._store is not None:
+            self._persist_question_generation_checkpoint(request, response)
+        return response
 
     def _get_project_definition(self, project_id: str) -> dict:
         return dict(self._PROJECTS.get(project_id, self._PROJECTS["proj-1"]))
@@ -434,6 +450,149 @@ class ReviewFlowService:
         self._latest_assessments[(request.project_id, request.stage_id)] = assessment
 
         if self._store is not None:
+            question_batch_id = f"qb-{request.request_id}"
+            workflow_run_id = f"run-{request.request_id}"
+            answer_batch_id = f"ab-{request.request_id}"
+            evaluation_batch_id = f"eb-{request.request_id}"
+            evaluation_item_id = f"ei-{request.request_id}-0"
+            answer_item_id = f"ai-{request.request_id}-0"
+            evidence_spans = self._build_evidence_spans(
+                evaluation_item_id=evaluation_item_id,
+                answer_item_id=answer_item_id,
+                evidence=list(assessment_response["assessment"].get("evidence", [])),
+                created_at=request.created_at,
+                request_id=request.request_id,
+            )
+            evaluation_item = EvaluationItemRecord(
+                evaluation_item_id=evaluation_item_id,
+                evaluation_batch_id=evaluation_batch_id,
+                question_id=request.question_id,
+                answer_item_id=answer_item_id,
+                local_verdict=verdict,
+                confidence=float(assessment_response.get("confidence", 0.0)),
+                status="completed",
+                evaluated_at=request.created_at,
+                payload={
+                    "reasoned_summary": f"Assessment verdict {verdict} for {request.question_id}.",
+                    "diagnosed_gaps": list(assessment.get("core_gaps", [])),
+                    "dimension_refs": list(assessment.get("dimension_hits", [])),
+                    "evidence_span_ids": [span.evidence_span_id for span in evidence_spans],
+                },
+            )
+            evaluation_batch = EvaluationBatchRecord(
+                evaluation_batch_id=evaluation_batch_id,
+                answer_batch_id=answer_batch_id,
+                workflow_run_id=workflow_run_id,
+                project_id=request.project_id,
+                stage_id=request.stage_id,
+                evaluated_by="assessment_agent",
+                evaluator_version="review_flow_service:first-checkpoint",
+                confidence=float(assessment_response.get("confidence", 0.0)),
+                status="completed",
+                evaluated_at=request.created_at,
+                supersedes_evaluation_batch_id=None,
+                payload={"request_id": request.request_id},
+            )
+            fact_batch, fact_items = self._assessment_synthesizer.synthesize(
+                workflow_run_id=workflow_run_id,
+                evaluation_batch=evaluation_batch,
+                evaluation_items=[evaluation_item],
+                evidence_spans=evidence_spans,
+            )
+            self._store.insert_workflow_request(
+                WorkflowRequestRecord(
+                    request_id=request.request_id,
+                    request_type="assessment",
+                    project_id=request.project_id,
+                    stage_id=request.stage_id,
+                    requested_by=request.actor_id,
+                    source=request.source_page,
+                    status="completed",
+                    created_at=request.created_at,
+                    payload={"request_id": request.request_id},
+                )
+            )
+            self._store.insert_workflow_run(
+                WorkflowRunRecord(
+                    run_id=workflow_run_id,
+                    request_id=request.request_id,
+                    run_type="assessment",
+                    status="completed",
+                    started_at=request.created_at,
+                    finished_at=request.created_at,
+                    supersedes_run_id=None,
+                    payload={"request_id": request.request_id},
+                )
+            )
+            self._store.insert_question_batch(
+                QuestionBatchRecord(
+                    question_batch_id=question_batch_id,
+                    workflow_run_id=workflow_run_id,
+                    project_id=request.project_id,
+                    stage_id=request.stage_id,
+                    generated_by="review_flow_service",
+                    source=request.source_page,
+                    batch_goal=self._get_stage_definition(request.project_id, request.stage_id)["stage_goal"],
+                    entry_question_id=request.question_id,
+                    status="active",
+                    created_at=request.created_at,
+                    payload={"question_count": 1, "request_id": request.request_id},
+                )
+            )
+            self._store.insert_question_items(
+                [
+                    QuestionItemRecord(
+                        question_id=request.question_id,
+                        question_batch_id=question_batch_id,
+                        question_type=current_question.question_level,
+                        prompt=current_question.question_prompt,
+                        intent=current_question.question_intent,
+                        difficulty_level=current_question.question_level,
+                        order_index=0,
+                        status="ready",
+                        created_at=request.created_at,
+                        payload={
+                            "expected_signals": current_question.expected_signals,
+                            "source_context": current_question.source_context,
+                        },
+                    )
+                ]
+            )
+            self._store.insert_answer_batch(
+                AnswerBatchRecord(
+                    answer_batch_id=answer_batch_id,
+                    question_batch_id=question_batch_id,
+                    workflow_run_id=workflow_run_id,
+                    submitted_by=request.actor_id,
+                    submission_mode="single_submit",
+                    completion_status="complete",
+                    submitted_at=request.created_at,
+                    status="submitted",
+                    payload={"request_id": request.request_id},
+                )
+            )
+            self._store.insert_answer_items(
+                [
+                    AnswerItemRecord(
+                        answer_item_id=answer_item_id,
+                        answer_batch_id=answer_batch_id,
+                        question_id=request.question_id,
+                        answered_by=request.actor_id,
+                        answer_text=request.answer_text,
+                        answer_format="plain_text",
+                        order_index=0,
+                        answered_at=request.created_at,
+                        status="answered",
+                        revision_of_answer_item_id=None,
+                        payload={"answer_excerpt": answer_excerpt},
+                    )
+                ]
+            )
+            self._store.insert_evaluation_batch(evaluation_batch)
+            self._store.insert_evaluation_items([evaluation_item])
+            self._store.insert_evidence_spans(evidence_spans)
+            self._store.insert_assessment_fact_batch(fact_batch)
+            self._store.insert_assessment_fact_items(fact_items)
             self._store.upsert_answer_fact(
                 AnswerFact(
                     answer_id=answer_id,
@@ -486,6 +645,100 @@ class ReviewFlowService:
             assessment_summary=assessment_summary,
 
         )
+
+    def _persist_question_generation_checkpoint(self, request: dict, response: dict) -> None:
+        request_id = str(request["request_id"])
+        workflow_run_id = f"run-{request_id}"
+        question_batch_id = f"qb-{request_id}"
+        questions = list(response.get("questions", []))
+        self._store.insert_workflow_request(
+            WorkflowRequestRecord(
+                request_id=request_id,
+                request_type="question_cycle",
+                project_id=str(request["project_id"]),
+                stage_id=str(request["stage_id"]),
+                requested_by="question_generation_client",
+                source="review_flow_service",
+                status="completed",
+                created_at=str(request.get("created_at", "")),
+                payload={"request": dict(request)},
+            )
+        )
+        self._store.insert_workflow_run(
+            WorkflowRunRecord(
+                run_id=workflow_run_id,
+                request_id=request_id,
+                run_type="question_cycle",
+                status="completed",
+                started_at=str(request.get("created_at", "")),
+                finished_at=str(request.get("created_at", "")),
+                supersedes_run_id=None,
+                payload={"question_count": len(questions), "request_id": request_id},
+            )
+        )
+        self._store.insert_question_batch(
+            QuestionBatchRecord(
+                question_batch_id=question_batch_id,
+                workflow_run_id=workflow_run_id,
+                project_id=str(request["project_id"]),
+                stage_id=str(request["stage_id"]),
+                generated_by="question_generation_client",
+                source="review_flow_service",
+                batch_goal=str(request.get("stage_goal", "")),
+                entry_question_id=f"{request_id}-q-1",
+                status="active",
+                created_at=str(request.get("created_at", "")),
+                payload={"question_count": len(questions), "request_id": request_id},
+            )
+        )
+        self._store.insert_question_items(
+            [
+                QuestionItemRecord(
+                    question_id=f"{request_id}-{item.get('question_id', f'q-{index + 1}')}",
+                    question_batch_id=question_batch_id,
+                    question_type=str(item.get("question_level", "core")),
+                    prompt=str(item.get("prompt", "")),
+                    intent=str(item.get("intent", "")),
+                    difficulty_level=str(item.get("question_level", "core")),
+                    order_index=index,
+                    status="ready",
+                    created_at=str(request.get("created_at", "")),
+                    payload={
+                        "expected_signals": list(item.get("expected_signals", [])),
+                        "source_context": list(item.get("source_context", [])),
+                    },
+                )
+                for index, item in enumerate(questions)
+            ]
+        )
+
+    def _build_evidence_spans(
+        self,
+        *,
+        evaluation_item_id: str,
+        answer_item_id: str,
+        evidence: list[str],
+        created_at: str,
+        request_id: str,
+    ) -> list[EvidenceSpanRecord]:
+        spans: list[EvidenceSpanRecord] = []
+        for index, item in enumerate(evidence):
+            content = str(item)
+            spans.append(
+                EvidenceSpanRecord(
+                    evidence_span_id=f"es-{request_id}-{index}",
+                    evaluation_item_id=evaluation_item_id,
+                    answer_item_id=answer_item_id,
+                    span_type="quoted_text",
+                    supports_dimension="assessment",
+                    content=content,
+                    start_offset=0 if content else None,
+                    end_offset=len(content) if content else None,
+                    created_at=created_at,
+                    payload={"evidence_index": index},
+                )
+            )
+        return spans
 
     def _derive_dimension_hits(self, assessment: dict) -> list[str]:
         dimension_scores = assessment.get("dimension_scores", {})
