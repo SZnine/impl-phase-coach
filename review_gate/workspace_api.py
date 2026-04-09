@@ -292,11 +292,13 @@ class WorkspaceAPI:
         states = self._profile_space.list_user_node_states(project_id, stage_id)
         state_by_node_id = {item["node_id"]: item for item in states}
 
-        current_weak_spots = [
-            node["label"]
-            for node in nodes
-            if state_by_node_id.get(node["node_id"], {}).get("review_needed") is True
-        ]
+        current_weak_spots: list[str] = []
+        for node in nodes:
+            if state_by_node_id.get(node["node_id"], {}).get("review_needed") is not True:
+                continue
+            label = node["label"]
+            if label not in current_weak_spots:
+                current_weak_spots.append(label)
         foundation_hotspots = [node["label"] for node in nodes if node["node_type"] == "foundation"]
         return KnowledgeMapSummaryViewDTO(
             focus_clusters=focus_clusters,
@@ -435,7 +437,8 @@ class WorkspaceAPI:
     def _focus_cluster_sort_key(self, item: dict) -> tuple[int, str]:
         codes = list(item.get("focus_reason_codes", []))
         priority = min((self._FOCUS_REASON_PRIORITY.get(code, 99) for code in codes), default=99)
-        return (priority, str(item.get("title", "")))
+        pinned_rank = 0 if bool(item.get("is_pinned", False)) else 1
+        return (pinned_rank, priority, str(item.get("title", "")))
 
     def _focus_reason_summary(self, item: dict, project_id: str | None = None) -> str:
         explanation = self._profile_space.get_focus_explanation(

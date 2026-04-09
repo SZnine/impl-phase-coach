@@ -332,6 +332,27 @@ def test_workspace_api_falls_back_when_focus_explanation_cache_is_missing() -> N
     assert summary_view.focus_clusters[0].focus_reason_summary.endswith(".")
 
 
+def test_workspace_api_deduplicates_current_weak_spots() -> None:
+    profile_space = ProfileSpaceService.for_testing()
+    assessment = {
+        "assessment_id": "assessment-repeat-1",
+        "verdict": "partial",
+        "core_gaps": ["Needs deeper boundary explanation."],
+        "misconceptions": [],
+    }
+    profile_space.sync_from_assessment(project_id="proj-1", stage_id="stage-1", assessment=assessment)
+    profile_space.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={**assessment, "assessment_id": "assessment-repeat-2"},
+    )
+    api = WorkspaceAPI(flow=ReviewFlowService.for_testing(), profile_space=profile_space)
+
+    summary_view = api.get_knowledge_map_summary_view(project_id="proj-1", stage_id="stage-1")
+
+    assert summary_view.current_weak_spots == ["Needs deeper boundary explanation."]
+
+
 def test_workspace_api_returns_proposals_view() -> None:
     proposal_center = ProposalCenterService.for_testing()
     proposal_center.create_compression_proposals(

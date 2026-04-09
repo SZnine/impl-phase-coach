@@ -97,7 +97,7 @@ def _seed_support_showcase_cluster(api) -> None:
         "generated_from": "current_project",
         "confidence": 0.85,
         "last_generated_at": current_utc_timestamp(),
-        "is_pinned": False,
+        "is_pinned": True,
         "status": "active",
     }
     store.upsert_focus_cluster(FocusCluster.from_dict(cluster))
