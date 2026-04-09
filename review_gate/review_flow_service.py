@@ -814,9 +814,9 @@ class ReviewFlowService:
         if self._store is None:
             return None
         events = self._store.list_events(project_id=project_id)
+        latest_legacy_payload: dict | None = None
         latest_payload: dict | None = None
         latest_generation_index = -1
-        latest_event_id = ""
         for event in events:
             if event.event_type != "question_set_generated":
                 continue
@@ -824,14 +824,14 @@ class ReviewFlowService:
                 continue
             if str(event.payload.get("question_set_id", "")) != question_set_id:
                 continue
+            if "generation_index" not in event.payload:
+                latest_legacy_payload = dict(event.payload)
+                continue
             generation_index = self._coerce_generation_index(event.payload.get("generation_index"))
-            if generation_index > latest_generation_index or (
-                generation_index == latest_generation_index and event.event_id > latest_event_id
-            ):
+            if generation_index >= latest_generation_index:
                 latest_generation_index = generation_index
-                latest_event_id = event.event_id
                 latest_payload = dict(event.payload)
-        return latest_payload
+        return latest_payload or latest_legacy_payload
 
     def _next_question_set_generation_index(self, *, project_id: str, stage_id: str, question_set_id: str) -> int:
         if self._store is None:

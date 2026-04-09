@@ -1,5 +1,5 @@
 from review_gate.action_dtos import SubmitAnswerRequest
-from review_gate.domain import QuestionSet
+from review_gate.domain import QuestionSet, WorkspaceEvent
 from review_gate.review_flow_service import ReviewFlowService
 from review_gate.storage_sqlite import SQLiteStore
 from pathlib import Path
@@ -98,6 +98,107 @@ def _semantic_question_set() -> QuestionSet:
         status="active",
         question_ids=["set-1-q-1", "set-1-q-2"],
         active_question_id="set-1-q-1",
+    )
+
+
+def _insert_legacy_generated_chain(
+    *,
+    store: SQLiteStore,
+    request_id: str,
+    created_at: str,
+) -> None:
+    workflow_run_id = f"run-{request_id}"
+    question_batch_id = f"qb-{request_id}"
+    store.insert_workflow_request(
+        WorkflowRequestRecord(
+            request_id=request_id,
+            request_type="question_cycle",
+            project_id="proj-1",
+            stage_id="stage-1",
+            requested_by="question_generation_client",
+            source="review_flow_service",
+            status="completed",
+            created_at=created_at,
+            payload={"request": {"request_id": request_id}},
+        )
+    )
+    store.insert_workflow_run(
+        WorkflowRunRecord(
+            run_id=workflow_run_id,
+            request_id=request_id,
+            run_type="question_cycle",
+            status="completed",
+            started_at=created_at,
+            finished_at=created_at,
+            supersedes_run_id=None,
+            payload={"question_count": 2, "request_id": request_id},
+        )
+    )
+    store.insert_question_batch(
+        QuestionBatchRecord(
+            question_batch_id=question_batch_id,
+            workflow_run_id=workflow_run_id,
+            project_id="proj-1",
+            stage_id="stage-1",
+            generated_by="question_generation_client",
+            source="review_flow_service",
+            batch_goal="freeze the minimal Question / Assessment / Decision boundary",
+            entry_question_id=f"{request_id}-q-1",
+            status="active",
+            created_at=created_at,
+            payload={"question_count": 2, "request_id": request_id},
+        )
+    )
+    store.insert_question_items(
+        [
+            QuestionItemRecord(
+                question_id=f"{request_id}-q-1",
+                question_batch_id=question_batch_id,
+                question_type="core",
+                prompt="Explain the current-stage boundary.",
+                intent="Check current-stage understanding.",
+                difficulty_level="core",
+                order_index=0,
+                status="ready",
+                created_at=created_at,
+                payload={
+                    "expected_signals": ["Question, Assessment, Decision split"],
+                    "source_context": [],
+                    "transport_question_id": "set-1-q-1",
+                },
+            ),
+            QuestionItemRecord(
+                question_id=f"{request_id}-q-2",
+                question_batch_id=question_batch_id,
+                question_type="why",
+                prompt="Why did we choose this boundary?",
+                intent="Check reasoning about trade-offs.",
+                difficulty_level="why",
+                order_index=1,
+                status="ready",
+                created_at=created_at,
+                payload={
+                    "expected_signals": ["module vs interface"],
+                    "source_context": [],
+                    "transport_question_id": "set-1-q-2",
+                },
+            ),
+        ]
+    )
+    store.append_event(
+        WorkspaceEvent(
+            event_id=f"evt-question-set-generated-{request_id}",
+            project_id="proj-1",
+            event_type="question_set_generated",
+            created_at=created_at,
+            payload={
+                "stage_id": "stage-1",
+                "question_set_id": "set-1",
+                "question_batch_id": question_batch_id,
+                "workflow_run_id": workflow_run_id,
+                "question_item_ids": [f"{request_id}-q-1", f"{request_id}-q-2"],
+            },
+        )
     )
 
 
@@ -486,6 +587,83 @@ def test_submit_answer_reuses_newest_generated_question_batch_for_same_question_
         evaluated_at="2026-04-09T13:00:00Z",
         supersedes_evaluation_batch_id=None,
         payload={"request_id": "req-chain-existing-2"},
+    )
+
+
+def test_submit_answer_reuses_later_legacy_generated_batch_for_same_question_set(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    question_set = _semantic_question_set()
+    store.upsert_question_set(question_set)
+    service = ReviewFlowService(assessment_client=CapturingAssessmentClient.for_testing(), store=store)
+
+    _insert_legacy_generated_chain(
+        store=store,
+        request_id="req-qgen-9",
+        created_at="2026-04-09T12:00:00Z",
+    )
+    _insert_legacy_generated_chain(
+        store=store,
+        request_id="req-qgen-10",
+        created_at="2026-04-09T12:05:00Z",
+    )
+
+    response = service.submit_answer(
+        SubmitAnswerRequest(
+            request_id="req-chain-existing-legacy-1",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-09T13:30:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="We split the boundary to keep state and scoring separate.",
+            draft_id=None,
+        )
+    )
+
+    assert response.success is True
+    assert store.get_question_set("set-1") == question_set
+    assert store.get_answer_batch("ab-req-chain-existing-legacy-1") == AnswerBatchRecord(
+        answer_batch_id="ab-req-chain-existing-legacy-1",
+        question_batch_id="qb-req-qgen-10",
+        workflow_run_id="run-req-qgen-10",
+        submitted_by="local-user",
+        submission_mode="single_submit",
+        completion_status="complete",
+        submitted_at="2026-04-09T13:30:00Z",
+        status="submitted",
+        payload={"request_id": "req-chain-existing-legacy-1"},
+    )
+    assert store.list_answer_items("ab-req-chain-existing-legacy-1") == [
+        AnswerItemRecord(
+            answer_item_id="ai-req-chain-existing-legacy-1-0",
+            answer_batch_id="ab-req-chain-existing-legacy-1",
+            question_id="req-qgen-10-q-1",
+            answered_by="local-user",
+            answer_text="We split the boundary to keep state and scoring separate.",
+            answer_format="plain_text",
+            order_index=0,
+            answered_at="2026-04-09T13:30:00Z",
+            status="answered",
+            revision_of_answer_item_id=None,
+            payload={"answer_excerpt": "We split the boundary to keep state and scoring separate."},
+        )
+    ]
+    assert store.get_evaluation_batch("eb-req-chain-existing-legacy-1") == EvaluationBatchRecord(
+        evaluation_batch_id="eb-req-chain-existing-legacy-1",
+        answer_batch_id="ab-req-chain-existing-legacy-1",
+        workflow_run_id="run-req-qgen-10",
+        project_id="proj-1",
+        stage_id="stage-1",
+        evaluated_by="assessment_agent",
+        evaluator_version="review_flow_service:first-checkpoint",
+        confidence=0.8,
+        status="completed",
+        evaluated_at="2026-04-09T13:30:00Z",
+        supersedes_evaluation_batch_id=None,
+        payload={"request_id": "req-chain-existing-legacy-1"},
     )
 
 
