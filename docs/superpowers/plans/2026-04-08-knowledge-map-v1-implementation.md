@@ -705,6 +705,46 @@ Expected: PASS.
 
 ---
 
+### Task 10: Derive Support Signals From Structured Assessment Signals
+
+**Files:**
+- Modify: assessment production path where structured scoring signals are assembled
+- Modify: `review_gate/profile_space_service.py`
+- Test: focused assessment-to-profile projection tests
+
+- [ ] **Step 1: Freeze the allowed derivation sources**
+
+Only allow `support_signals` to be derived from:
+1. `core_gaps + support_basis tags`
+2. `dimension_hits + core_gaps`
+
+Do not derive `supports` from:
+1. raw `answer_text`
+2. explanation prose
+3. keyword co-occurrence
+4. unstructured reasoning paragraphs
+
+- [ ] **Step 2: Extend support signal payload with basis metadata**
+
+Derived `support_signals` should include:
+1. `source_label`
+2. `source_node_type`
+3. `target_label`
+4. `target_node_type`
+5. `basis_type`
+6. `basis_key`
+
+The goal is not “more supports”, but “auditable high-confidence supports”.
+
+- [ ] **Step 3: Keep relation generation deterministic**
+
+This task must not:
+1. introduce realtime LLM relation generation
+2. expand to `depends_on`
+3. infer supports from free-form text
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**
@@ -718,6 +758,7 @@ Expected: PASS.
 - Keeps LLM governance, merge execution, complex editing, and global cluster templates out of scope.
 - Separates explanation cache hosting from explanation generation strategy without introducing realtime LLM dependency.
 - Adds a minimal high-confidence `supports` slice without expanding into broad semantic relation inference.
+- Keeps the next `support_signals` step constrained to structured assessment derivation rather than free-text inference.
 
 **2. Placeholder scan:**
 - No `TODO` / `TBD` placeholders remain.

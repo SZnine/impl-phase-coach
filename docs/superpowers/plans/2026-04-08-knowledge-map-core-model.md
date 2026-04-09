@@ -245,6 +245,35 @@ A 的缺失或不稳导致某种错误、误区或薄弱表现。
 
 ---
 
+### 7.4 `supports` 的第一版输入边界
+
+第一版不允许从自由文本直接推导 `supports`。
+
+`supports` 只应来自高置信、可解释的结构化输入信号：
+
+1. `core_gaps + support_basis tags`
+2. `dimension_hits + core_gaps`
+
+当前明确禁止作为第一版 `supports` 输入来源的内容：
+
+1. 原始 `answer_text`
+2. explanation 文案
+3. 关键词共现
+4. 未结构化 reasoning 段落
+
+第一版 `support_signals` 建议至少包含：
+
+1. `source_label`
+2. `source_node_type`
+3. `target_label`
+4. `target_node_type`
+5. `basis_type`
+6. `basis_key`
+
+这一步的关键不是“尽可能多地产生 supports”，而是“让 supports 继续保持高置信和可审计”。
+
+---
+
 ## 8. 证据锚点
 
 ### 8.1 核心判断
