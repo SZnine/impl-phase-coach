@@ -1606,3 +1606,218 @@ facts/signal 是“某次评判整理出的结构化事实快照”。
 基于这套写入策略，继续细化：
 1. 第一版数据库 schema 轮廓
 2. active revision / current state pointer 应该如何表达
+
+---
+
+## 22. 第一版数据库 Schema 轮廓的最终最小集合
+
+这一节的目标不是继续发散终态 schema，而是把前面已经冻结的判断压成一份可直接进入实现计划的最小集合。
+
+当前冻结原则是：
+
+`第一批 schema 只服务第一迁移 checkpoint：Workflow -> Question -> Answer -> Evaluation -> Facts。`
+
+也就是说，当前“最小”不是局部偷小，而是挂在终态主链迁移上的最小正式骨架。
+
+### 22.1 第一批必须建的表
+
+第一批只建这 11 张核心表：
+
+1. `workflow_requests`
+2. `workflow_runs`
+3. `question_batches`
+4. `question_items`
+5. `answer_batches`
+6. `answer_items`
+7. `evaluation_batches`
+8. `evaluation_items`
+9. `evidence_spans`
+10. `assessment_fact_batches`
+11. `assessment_fact_items`
+
+这 11 张表正好对应第一迁移 checkpoint：
+
+`Workflow -> Question -> Answer -> Evaluation -> Facts`
+
+### 22.2 第一批必须建的真实 FK
+
+第一批建议直接建真实外键的主链如下：
+
+1. `workflow_runs.request_id -> workflow_requests.request_id`
+2. `question_batches.workflow_run_id -> workflow_runs.run_id`
+3. `question_items.question_batch_id -> question_batches.question_batch_id`
+4. `answer_batches.question_batch_id -> question_batches.question_batch_id`
+5. `answer_batches.workflow_run_id -> workflow_runs.run_id`
+6. `answer_items.answer_batch_id -> answer_batches.answer_batch_id`
+7. `answer_items.question_id -> question_items.question_id`
+8. `evaluation_batches.answer_batch_id -> answer_batches.answer_batch_id`
+9. `evaluation_batches.workflow_run_id -> workflow_runs.run_id`
+10. `evaluation_items.evaluation_batch_id -> evaluation_batches.evaluation_batch_id`
+11. `evaluation_items.answer_item_id -> answer_items.answer_item_id`
+12. `evidence_spans.evaluation_item_id -> evaluation_items.evaluation_item_id`
+13. `evidence_spans.answer_item_id -> answer_items.answer_item_id`
+14. `assessment_fact_batches.evaluation_batch_id -> evaluation_batches.evaluation_batch_id`
+15. `assessment_fact_batches.workflow_run_id -> workflow_runs.run_id`
+16. `assessment_fact_items.assessment_fact_batch_id -> assessment_fact_batches.assessment_fact_batch_id`
+
+当前先保留为逻辑约束的关系：
+
+1. `evaluation_items.question_id`
+2. `assessment_fact_items.source_evaluation_item_id`
+3. 所有 `supersedes_*`
+4. payload 内的列表引用
+
+冻结规则：
+
+`核心线性主链用真实 FK；跨阶段派生链、追溯链和替代链先用逻辑约束。`
+
+### 22.3 第一批必须建的索引
+
+第一批首建索引只服务：
+
+1. 高频 join 键
+2. 批次子项按顺序读取
+3. 项目/阶段维度的主链筛选
+
+建议首建的二级索引如下：
+
+1. `workflow_runs(request_id)`
+2. `question_batches(workflow_run_id)`
+3. `question_batches(project_id, stage_id)`
+4. `question_items(question_batch_id, order_index)`
+5. `answer_batches(question_batch_id)`
+6. `answer_batches(workflow_run_id)`
+7. `answer_items(answer_batch_id, order_index)`
+8. `answer_items(question_id)`
+9. `evaluation_batches(answer_batch_id)`
+10. `evaluation_batches(workflow_run_id)`
+11. `evaluation_items(evaluation_batch_id)`
+12. `evaluation_items(answer_item_id)`
+13. `evidence_spans(evaluation_item_id)`
+14. `evidence_spans(answer_item_id)`
+15. `assessment_fact_batches(evaluation_batch_id)`
+16. `assessment_fact_batches(workflow_run_id)`
+17. `assessment_fact_items(assessment_fact_batch_id)`
+18. `assessment_fact_items(fact_type, topic_key)`
+
+冻结规则：
+
+`第一天只给高频 join 键、高频列表筛选键、顺序读取键建索引，不提前为 payload 细节和未来不确定查询建索引。`
+
+### 22.4 第一批结构化列与 payload 边界
+
+第一批 schema 采用：
+
+`骨架字段结构化，语义细节 payload 化。`
+
+必须优先结构化的字段类型：
+
+1. 主键 / 外键
+2. 生命周期状态
+3. 类型字段
+4. 顺序字段
+5. 核心时间字段
+6. `project_id / stage_id / workflow_run_id`
+7. `topic_key`
+
+第一批继续允许保留在 payload JSON 中的高语义字段：
+
+1. `request_payload`
+2. `trigger_context`
+3. `context_snapshot`
+4. `target_dimensions`
+5. `related_context_refs`
+6. `rubric_scores`
+7. `reasoned_summary`
+8. `diagnosed_gaps`
+9. `follow_up_suggestions`
+10. `why_it_matters`
+11. `dimension_refs`
+12. `evidence_span_ids`
+13. `signal_payload`
+
+冻结规则：
+
+`凡是会成为跨表引用、主链筛选、主链排序、主链聚合条件的字段，第一批就必须结构化；高语义解释、可变评判细节、上下文快照先留 payload。`
+
+### 22.5 第一批 status、时间字段与 current pointer
+
+第一批必须带 `status` 的表：
+
+1. `workflow_requests`
+2. `workflow_runs`
+3. `question_batches`
+4. `question_items`
+5. `answer_batches`
+6. `answer_items`
+7. `evaluation_batches`
+8. `evaluation_items`
+9. `assessment_fact_batches`
+10. `assessment_fact_items`
+
+第一批不建议加 `status` 的表：
+
+1. `evidence_spans`
+
+第一批统一标准时间字段：
+
+1. `created_at`
+2. `updated_at`
+3. `started_at`
+4. `finished_at`
+
+第一批保留的专用业务时间点：
+
+1. `submitted_at`
+2. `evaluated_at`
+3. `synthesized_at`
+
+第一批 current pointer 结论：
+
+1. 当前这 11 张表范围内，不额外引入 pointer 表
+2. `active_graph_revision_pointers` 仍属于下一批 Graph Layer
+
+冻结规则：
+
+`第一批先把历史主链跑通，不在 Facts 之前引入 Graph current pointer 复杂度。`
+
+### 22.6 第一批明确不做的表与关系
+
+以下内容明确不进入第一批实现：
+
+1. `maintenance_requests`
+2. `mistake_records`
+3. `knowledge_signals`
+4. `graph_revisions`
+5. `knowledge_nodes`
+6. `knowledge_relations`
+7. `graph_rewrite_records`
+8. `active_graph_revision_pointers`
+9. `user_node_states`
+10. `focus_clusters`
+11. `focus_explanations`
+
+同样不在第一批做的还有：
+
+1. Graph Layer 读面迁移
+2. Graph Maintenance 主流程
+3. provenance ref 的全量表化
+4. payload 细节的进一步拆表
+
+冻结规则：
+
+`Graph 与 Maintenance 整体后置；第一批不偷带进来。`
+
+### 22.7 第一版 Schema 轮廓冻结结论
+
+当前建议把第一版 schema 轮廓冻结成一句话：
+
+`第一批正式 schema 只落 Workflow / Problem-Answer / Evaluation / Assessment Facts 四层中的 11 张核心表，配套 16 条真实 FK、18 个首批索引、骨架字段结构化与高语义 payload 并存；Graph 与 Maintenance 整体后置。`
+
+这份最小集合现在已经足够作为下一步实现计划的输入。
+
+#### 当前建议的下一步
+基于这份“第一版 schema 最终最小集合”，继续进入：
+
+1. 第一迁移 checkpoint 的实现计划
+2. `storage_sqlite.py` 向分层 repository 语义演进的落地顺序
