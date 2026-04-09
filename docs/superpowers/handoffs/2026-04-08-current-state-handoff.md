@@ -6,8 +6,8 @@
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 最近已提交基线：`f0c1d21 docs: lock llm explanation adoption gate`
-- 当前工作区：在 `f0c1d21` 之上继续推进了 `阶段 36 / supports 关系最小扩展`，尚未提交
+- 最近已提交基线：`e392c7b docs: freeze support signal derivation rules`
+- 当前工作区：在 `e392c7b` 之上继续推进了 `阶段 40 / support_signals 结构化派生最小实现`，尚未提交
 - 当前主线：
   1. 稳定性优先主线已经收出可用基线
   2. 当前更活跃的是 `知识地图 V1 主线`
@@ -172,6 +172,26 @@
 
 当前这一步仍然是 deterministic default strategy，不接 LLM/agent 做关系推断。
 
+### 阶段 40
+
+已完成 `support_signals` 的结构化派生最小实现：
+
+1. `AssessmentFact` 新增：
+   - `dimension_hits`
+   - `support_basis_tags`
+   - `support_signals`
+2. `ReviewFlowService.submit_answer(...)` 已在 assessment 产出时派生：
+   - `dimension_hits`
+   - `support_signals`
+3. `ProfileSpaceService` 继续只消费结构化 `support_signals`
+4. `WorkspaceAPI submit_answer` 主链已经可以把派生后的 `supports` 投影进知识地图
+
+当前最关键的边界是：
+
+1. assessment 负责产出结构化 signal
+2. profile space 负责消费 signal 并投影关系
+3. 当前仍然禁止从自由文本直接推 `supports`
+
 ## 4. 当前仍然属于过渡态的部分
 
 这些现在是诚实可用，但还不是长期目标实现：
@@ -240,11 +260,10 @@
 
 ## 7. 当前验证状态
 
-最近一轮和阶段 36 直接相关的验证结果：
+最近一轮和阶段 40 直接相关的验证结果：
 
-1. `python -m pytest tests/test_profile_space_service.py -k "supports" -q` -> `2 passed`
-2. `python -m pytest tests/test_profile_space_service.py -q` -> `17 passed`
-3. `python -m pytest tests/test_workspace_api.py tests/test_http_api.py -q` -> `39 passed`
+1. `python -m pytest tests/test_review_flow_service.py::test_submit_answer_derives_support_signals_from_support_basis_tags tests/test_review_flow_service.py::test_submit_answer_derives_support_signals_from_dimension_hits_and_core_gaps tests/test_workspace_api.py::test_submit_answer_action_projects_derived_support_signals_into_supports_relations tests/test_workbench_storage.py::test_sqlite_store_round_trips_durable_facts -q` -> `4 passed`
+2. `python -m pytest tests/test_review_flow_service.py tests/test_workspace_api.py tests/test_workbench_storage.py -q` -> `38 passed`
 
 当前已知非阻塞项：
 
@@ -254,19 +273,19 @@
 
 ## 8. 当前下一步建议
 
-当前最合理的下一步不是扩更多页面，而是继续在知识地图主线上做“supports 输入策略收口”或“主图表达轻增强”。
+当前最合理的下一步不是扩更多页面，而是继续在知识地图主线上做“assessment client 契约收口”或“主图表达轻增强”。
 
 推荐优先级：
 
 1. 先做文档/基线同步后的 checkpoint
 2. 再决定是否进入：
-   - `support_signals` 输入策略再收一层
+   - `support_signals` 是否正式进入 assessment client 契约
    - 或主图轻增强
 
 如果继续实现，我建议优先围绕：
 
-1. `support_signals` 如何更稳定地产生
-2. 何时值得把高置信 `supports` 从显式 signal 走向更强策略
+1. `support_signals` 是否正式进入 assessment client 契约
+2. assessment 结构化字段是否需要更稳定 schema
 
 而不是现在就扩复杂图交互。
 
@@ -281,8 +300,8 @@
 3. docs/superpowers/plans/2026-04-08-knowledge-map-v1-implementation.md
 
 当前基线：
-- 最近已提交基线：f0c1d21 docs: lock llm explanation adoption gate
-- 当前工作区已经继续推进到“阶段 36 / supports 关系最小扩展”，但还未提交
+- 最近已提交基线：e392c7b docs: freeze support signal derivation rules
+- 当前工作区已经继续推进到“阶段 40 / support_signals 结构化派生最小实现”，但还未提交
 
 请按 impl-phase-coach 方式继续：
 1. 先判断当前阶段

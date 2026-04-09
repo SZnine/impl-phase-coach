@@ -32,6 +32,24 @@ class CurrentQuestionContext:
 
 
 class ReviewFlowService:
+    _SUPPORT_DIMENSION_BASIS = {
+        "state_modeling": {
+            "source_label": "State machine",
+            "source_node_type": "foundation",
+            "target_node_type": "concept",
+        },
+        "boundary_awareness": {
+            "source_label": "Boundary discipline",
+            "source_node_type": "foundation",
+            "target_node_type": "method",
+        },
+        "decision_awareness": {
+            "source_label": "Decision framing",
+            "source_node_type": "concept",
+            "target_node_type": "decision",
+        },
+    }
+
     _PROJECTS = {
         "proj-1": {
             "project_id": "proj-1",
@@ -399,6 +417,8 @@ class ReviewFlowService:
         verdict = assessment.get("verdict", "partial")
         answer_excerpt = request.answer_text.strip()[:120]
         assessment_id = f"assessment-{request.request_id}"
+        assessment["dimension_hits"] = self._derive_dimension_hits(assessment)
+        assessment["support_signals"] = self._derive_support_signals(assessment)
         assessment.update(
             {
                 "assessment_id": assessment_id,
@@ -466,4 +486,91 @@ class ReviewFlowService:
             assessment_summary=assessment_summary,
 
         )
+
+    def _derive_dimension_hits(self, assessment: dict) -> list[str]:
+        dimension_scores = assessment.get("dimension_scores", {})
+        if not isinstance(dimension_scores, dict):
+            return []
+        return [
+            key
+            for key, value in dimension_scores.items()
+            if key in self._SUPPORT_DIMENSION_BASIS and int(value) <= 2
+        ]
+
+    def _derive_support_signals(self, assessment: dict) -> list[dict[str, str]]:
+        derived: list[dict[str, str]] = []
+        support_basis_tags = assessment.get("support_basis_tags", [])
+        core_gaps = [str(item).strip() for item in assessment.get("core_gaps", []) if str(item).strip()]
+        dimension_hits = [str(item).strip() for item in assessment.get("dimension_hits", []) if str(item).strip()]
+
+        for item in support_basis_tags:
+            if not isinstance(item, dict):
+                continue
+            source_label = str(item.get("source_label", "")).strip()
+            source_node_type = str(item.get("source_node_type", "")).strip()
+            target_label = str(item.get("target_label", "")).strip()
+            target_node_type = str(item.get("target_node_type", "")).strip()
+            basis_key = str(item.get("basis_key", "")).strip()
+            if not (source_label and source_node_type and target_label and target_node_type and basis_key):
+                continue
+            derived.append(
+                {
+                    "source_label": source_label,
+                    "source_node_type": source_node_type,
+                    "target_label": target_label,
+                    "target_node_type": target_node_type,
+                    "basis_type": "support_basis_tag",
+                    "basis_key": basis_key,
+                }
+            )
+
+        if not core_gaps:
+            return self._dedupe_support_signals(derived)
+
+        for basis_key in dimension_hits:
+            basis = self._SUPPORT_DIMENSION_BASIS.get(basis_key)
+            if basis is None:
+                continue
+            for gap in core_gaps:
+                inferred_target_node_type = self._infer_support_target_node_type(gap)
+                if inferred_target_node_type != basis["target_node_type"]:
+                    continue
+                derived.append(
+                    {
+                        "source_label": basis["source_label"],
+                        "source_node_type": basis["source_node_type"],
+                        "target_label": gap,
+                        "target_node_type": basis["target_node_type"],
+                        "basis_type": "dimension_hit",
+                        "basis_key": basis_key,
+                    }
+                )
+
+        return self._dedupe_support_signals(derived)
+
+    def _infer_support_target_node_type(self, gap_label: str) -> str:
+        lowered = gap_label.strip().lower()
+        if "decision" in lowered:
+            return "decision"
+        if any(token in lowered for token in {"discipline", "strategy", "method", "workflow", "practice"}):
+            return "method"
+        return "concept"
+
+    def _dedupe_support_signals(self, items: list[dict[str, str]]) -> list[dict[str, str]]:
+        deduped: list[dict[str, str]] = []
+        seen: set[tuple[str, str, str, str, str, str]] = set()
+        for item in items:
+            key = (
+                item.get("source_label", ""),
+                item.get("source_node_type", ""),
+                item.get("target_label", ""),
+                item.get("target_node_type", ""),
+                item.get("basis_type", ""),
+                item.get("basis_key", ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped
 

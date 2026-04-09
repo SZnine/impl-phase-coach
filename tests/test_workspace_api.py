@@ -25,28 +25,41 @@ from review_gate.workspace_api import WorkspaceAPI
 
 
 class CapturingAssessmentClient:
-    def __init__(self, verdict: str = "partial", core_gaps: list[str] | None = None, misconceptions: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        verdict: str = "partial",
+        core_gaps: list[str] | None = None,
+        misconceptions: list[str] | None = None,
+        *,
+        dimension_scores_override: dict[str, int] | None = None,
+        support_basis_tags: list[dict] | None = None,
+    ) -> None:
         self.verdict = verdict
         self.core_gaps = core_gaps if core_gaps is not None else (["Needs deeper boundary explanation."] if verdict != "strong" else [])
         self.misconceptions = misconceptions if misconceptions is not None else []
+        self.dimension_scores_override = dimension_scores_override or {}
+        self.support_basis_tags = support_basis_tags or []
         self.last_request: dict | None = None
 
     def assess(self, request: dict) -> dict:
         self.last_request = request
+        dimension_scores = {
+            "correctness": 3 if self.verdict != "weak" else 1,
+            "reasoning": 3 if self.verdict == "strong" else 2,
+            "decision_awareness": 2 if self.verdict != "weak" else 1,
+            "boundary_awareness": 3 if self.verdict != "weak" else 1,
+            "stability": 3 if self.verdict == "strong" else 2,
+        }
+        dimension_scores.update(self.dimension_scores_override)
         return {
             "request_id": request["request_id"],
             "assessment": {
                 "score_total": 0.72 if self.verdict != "weak" else 0.35,
-                "dimension_scores": {
-                    "correctness": 3 if self.verdict != "weak" else 1,
-                    "reasoning": 3 if self.verdict == "strong" else 2,
-                    "decision_awareness": 2 if self.verdict != "weak" else 1,
-                    "boundary_awareness": 3 if self.verdict != "weak" else 1,
-                    "stability": 3 if self.verdict == "strong" else 2,
-                },
+                "dimension_scores": dimension_scores,
                 "verdict": self.verdict,
                 "core_gaps": self.core_gaps,
                 "misconceptions": self.misconceptions,
+                "support_basis_tags": self.support_basis_tags,
                 "evidence": [f"assessment evidence: verdict={self.verdict}"],
             },
             "recommended_action": "redirect_to_learning" if self.verdict == "weak" else "continue_answering",
@@ -418,6 +431,45 @@ def test_submit_answer_action_returns_assessment_created_response() -> None:
     stage_view = api.get_stage_view("proj-1", "stage-1")
     assert stage_view.knowledge_summary is not None
     assert stage_view.knowledge_summary.knowledge_entry_count == 1
+
+
+def test_submit_answer_action_projects_derived_support_signals_into_supports_relations() -> None:
+    flow = ReviewFlowService(
+        assessment_client=CapturingAssessmentClient(
+            verdict="partial",
+            core_gaps=["API boundary discipline"],
+            misconceptions=[],
+            dimension_scores_override={
+                "boundary_awareness": 1,
+            },
+        )
+    )
+    profile_space = ProfileSpaceService.for_testing()
+    api = WorkspaceAPI(flow=flow, profile_space=profile_space)
+
+    response = api.submit_answer_action(
+        SubmitAnswerRequest(
+            request_id="req-supports-1",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-09T12:00:00Z",
+            question_set_id="set-1",
+            question_id="q-1",
+            answer_text="This answer is long enough to trigger support signal derivation.",
+            draft_id=None,
+        )
+    )
+
+    assert response.result_type == "assessment_created"
+    relations = profile_space.list_knowledge_relations(project_id="proj-1", stage_id="stage-1")
+    supports_relations = [item for item in relations if item["relation_type"] == "supports"]
+    stage_view = api.get_stage_view("proj-1", "stage-1")
+
+    assert len(supports_relations) == 1
+    assert supports_relations[0]["source_node_id"].endswith(":foundation:boundary-discipline")
+    assert supports_relations[0]["target_node_id"].endswith(":method:api-boundary-discipline")
     assert stage_view.knowledge_summary.mistake_count == 1
     assert stage_view.knowledge_summary.latest_summary == "synced partial assessment with 1 knowledge entries and 1 mistakes"
 
@@ -427,7 +479,7 @@ def test_submit_answer_action_returns_assessment_created_response() -> None:
 
     index_view = api.get_knowledge_index_view(project_id="proj-1", stage_id="stage-1")
     assert index_view.total_count == 1
-    assert index_view.items[0].title == "Needs deeper boundary explanation."
+    assert index_view.items[0].title == "API boundary discipline"
 
 
 def test_submit_answer_request_and_response_are_stable_transport_models() -> None:

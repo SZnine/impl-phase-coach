@@ -214,8 +214,28 @@ def test_sqlite_store_round_trips_durable_facts(tmp_path: Path) -> None:
         verdict="partial",
         score_total=0.72,
         dimension_scores={"correctness": 3},
+        dimension_hits=["boundary_awareness"],
         core_gaps=["Decision awareness"],
         misconceptions=[],
+        support_basis_tags=[
+            {
+                "basis_key": "boundary_awareness",
+                "source_label": "Boundary discipline",
+                "source_node_type": "foundation",
+                "target_label": "Decision awareness",
+                "target_node_type": "decision",
+            }
+        ],
+        support_signals=[
+            {
+                "source_label": "Boundary discipline",
+                "source_node_type": "foundation",
+                "target_label": "Decision awareness",
+                "target_node_type": "decision",
+                "basis_type": "support_basis_tag",
+                "basis_key": "boundary_awareness",
+            }
+        ],
         confidence=0.8,
     )
     decision = DecisionFact(

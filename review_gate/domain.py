@@ -181,8 +181,11 @@ class AssessmentFact(JsonSerializable):
     verdict: str
     score_total: float
     dimension_scores: dict[str, int]
+    dimension_hits: list[str]
     core_gaps: list[str]
     misconceptions: list[str]
+    support_basis_tags: list[dict[str, Any]]
+    support_signals: list[dict[str, Any]]
     confidence: float
 
     @classmethod
@@ -201,8 +204,11 @@ class AssessmentFact(JsonSerializable):
             verdict=_coerce_str(payload["verdict"]),
             score_total=_coerce_float(payload.get("score_total"), 0.0),
             dimension_scores={str(key): _coerce_int(value, 0) for key, value in dimension_scores_payload.items()},
+            dimension_hits=_coerce_str_list(payload.get("dimension_hits")),
             core_gaps=_coerce_str_list(payload.get("core_gaps")),
             misconceptions=_coerce_str_list(payload.get("misconceptions")),
+            support_basis_tags=_coerce_dict_list(payload.get("support_basis_tags")),
+            support_signals=_coerce_dict_list(payload.get("support_signals")),
             confidence=_coerce_float(payload.get("confidence"), 0.0),
         )
 
