@@ -21,6 +21,19 @@ from review_gate.domain import (
     UserNodeState,
     WorkspaceEvent,
 )
+from review_gate.checkpoint_models import (
+    AnswerBatchRecord,
+    AnswerItemRecord,
+    AssessmentFactBatchRecord,
+    AssessmentFactItemRecord,
+    EvaluationBatchRecord,
+    EvaluationItemRecord,
+    EvidenceSpanRecord,
+    QuestionBatchRecord,
+    QuestionItemRecord,
+    WorkflowRequestRecord,
+    WorkflowRunRecord,
+)
 
 
 class SQLiteStore:
@@ -170,6 +183,218 @@ class SQLiteStore:
 
                 CREATE INDEX IF NOT EXISTS idx_focus_explanation_store_profile_subject
                     ON focus_explanation_store(profile_space_id, subject_type, subject_id);
+
+                CREATE TABLE IF NOT EXISTS workflow_requests (
+                    request_id TEXT PRIMARY KEY,
+                    request_type TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    requested_by TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS workflow_runs (
+                    run_id TEXT PRIMARY KEY,
+                    request_id TEXT NOT NULL,
+                    run_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT,
+                    supersedes_run_id TEXT,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (request_id) REFERENCES workflow_requests(request_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_workflow_runs_request_id
+                    ON workflow_runs(request_id);
+
+                CREATE TABLE IF NOT EXISTS question_batches (
+                    question_batch_id TEXT PRIMARY KEY,
+                    workflow_run_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    generated_by TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    batch_goal TEXT NOT NULL,
+                    entry_question_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (workflow_run_id) REFERENCES workflow_runs(run_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_question_batches_workflow_run_id
+                    ON question_batches(workflow_run_id);
+
+                CREATE INDEX IF NOT EXISTS idx_question_batches_project_stage
+                    ON question_batches(project_id, stage_id);
+
+                CREATE TABLE IF NOT EXISTS question_items (
+                    question_id TEXT PRIMARY KEY,
+                    question_batch_id TEXT NOT NULL,
+                    question_type TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    intent TEXT NOT NULL,
+                    difficulty_level TEXT NOT NULL,
+                    order_index INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (question_batch_id) REFERENCES question_batches(question_batch_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_question_items_batch_order
+                    ON question_items(question_batch_id, order_index);
+
+                CREATE TABLE IF NOT EXISTS answer_batches (
+                    answer_batch_id TEXT PRIMARY KEY,
+                    question_batch_id TEXT NOT NULL,
+                    workflow_run_id TEXT NOT NULL,
+                    submitted_by TEXT NOT NULL,
+                    submission_mode TEXT NOT NULL,
+                    completion_status TEXT NOT NULL,
+                    submitted_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (question_batch_id) REFERENCES question_batches(question_batch_id),
+                    FOREIGN KEY (workflow_run_id) REFERENCES workflow_runs(run_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_answer_batches_question_batch_id
+                    ON answer_batches(question_batch_id);
+
+                CREATE INDEX IF NOT EXISTS idx_answer_batches_workflow_run_id
+                    ON answer_batches(workflow_run_id);
+
+                CREATE TABLE IF NOT EXISTS answer_items (
+                    answer_item_id TEXT PRIMARY KEY,
+                    answer_batch_id TEXT NOT NULL,
+                    question_id TEXT NOT NULL,
+                    answered_by TEXT NOT NULL,
+                    answer_text TEXT NOT NULL,
+                    answer_format TEXT NOT NULL,
+                    order_index INTEGER NOT NULL,
+                    answered_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    revision_of_answer_item_id TEXT,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (answer_batch_id) REFERENCES answer_batches(answer_batch_id),
+                    FOREIGN KEY (question_id) REFERENCES question_items(question_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_answer_items_batch_order
+                    ON answer_items(answer_batch_id, order_index);
+
+                CREATE INDEX IF NOT EXISTS idx_answer_items_question_id
+                    ON answer_items(question_id);
+
+                CREATE TABLE IF NOT EXISTS evaluation_batches (
+                    evaluation_batch_id TEXT PRIMARY KEY,
+                    answer_batch_id TEXT NOT NULL,
+                    workflow_run_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    evaluated_by TEXT NOT NULL,
+                    evaluator_version TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    evaluated_at TEXT NOT NULL,
+                    supersedes_evaluation_batch_id TEXT,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (answer_batch_id) REFERENCES answer_batches(answer_batch_id),
+                    FOREIGN KEY (workflow_run_id) REFERENCES workflow_runs(run_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_evaluation_batches_answer_batch_id
+                    ON evaluation_batches(answer_batch_id);
+
+                CREATE INDEX IF NOT EXISTS idx_evaluation_batches_workflow_run_id
+                    ON evaluation_batches(workflow_run_id);
+
+                CREATE TABLE IF NOT EXISTS evaluation_items (
+                    evaluation_item_id TEXT PRIMARY KEY,
+                    evaluation_batch_id TEXT NOT NULL,
+                    question_id TEXT NOT NULL,
+                    answer_item_id TEXT NOT NULL,
+                    local_verdict TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    evaluated_at TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (evaluation_batch_id) REFERENCES evaluation_batches(evaluation_batch_id),
+                    FOREIGN KEY (answer_item_id) REFERENCES answer_items(answer_item_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_evaluation_items_batch_id
+                    ON evaluation_items(evaluation_batch_id);
+
+                CREATE INDEX IF NOT EXISTS idx_evaluation_items_answer_item_id
+                    ON evaluation_items(answer_item_id);
+
+                CREATE TABLE IF NOT EXISTS evidence_spans (
+                    evidence_span_id TEXT PRIMARY KEY,
+                    evaluation_item_id TEXT NOT NULL,
+                    answer_item_id TEXT NOT NULL,
+                    span_type TEXT NOT NULL,
+                    supports_dimension TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    start_offset INTEGER,
+                    end_offset INTEGER,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (evaluation_item_id) REFERENCES evaluation_items(evaluation_item_id),
+                    FOREIGN KEY (answer_item_id) REFERENCES answer_items(answer_item_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_evidence_spans_evaluation_item_id
+                    ON evidence_spans(evaluation_item_id);
+
+                CREATE INDEX IF NOT EXISTS idx_evidence_spans_answer_item_id
+                    ON evidence_spans(answer_item_id);
+
+                CREATE TABLE IF NOT EXISTS assessment_fact_batches (
+                    assessment_fact_batch_id TEXT PRIMARY KEY,
+                    evaluation_batch_id TEXT NOT NULL,
+                    workflow_run_id TEXT NOT NULL,
+                    synthesized_by TEXT NOT NULL,
+                    synthesizer_version TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    synthesized_at TEXT NOT NULL,
+                    supersedes_assessment_fact_batch_id TEXT,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (evaluation_batch_id) REFERENCES evaluation_batches(evaluation_batch_id),
+                    FOREIGN KEY (workflow_run_id) REFERENCES workflow_runs(run_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_assessment_fact_batches_evaluation_batch_id
+                    ON assessment_fact_batches(evaluation_batch_id);
+
+                CREATE INDEX IF NOT EXISTS idx_assessment_fact_batches_workflow_run_id
+                    ON assessment_fact_batches(workflow_run_id);
+
+                CREATE TABLE IF NOT EXISTS assessment_fact_items (
+                    assessment_fact_item_id TEXT PRIMARY KEY,
+                    assessment_fact_batch_id TEXT NOT NULL,
+                    source_evaluation_item_id TEXT,
+                    fact_type TEXT NOT NULL,
+                    topic_key TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    supersedes_assessment_fact_item_id TEXT,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (assessment_fact_batch_id) REFERENCES assessment_fact_batches(assessment_fact_batch_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_assessment_fact_items_batch_id
+                    ON assessment_fact_items(assessment_fact_batch_id);
+
+                CREATE INDEX IF NOT EXISTS idx_assessment_fact_items_fact_type_topic_key
+                    ON assessment_fact_items(fact_type, topic_key);
 
                 CREATE TABLE IF NOT EXISTS question_set_store (
                     question_set_id TEXT PRIMARY KEY,
@@ -769,6 +994,408 @@ class SQLiteStore:
             return None
         return FocusExplanation.from_json(row["payload"])
 
+    def insert_workflow_request(self, record: WorkflowRequestRecord) -> None:
+        self._insert_json_record(
+            table_name="workflow_requests",
+            pk_column="request_id",
+            pk_value=record.request_id,
+            record=record,
+            columns={
+                "request_type": record.request_type,
+                "project_id": record.project_id,
+                "stage_id": record.stage_id,
+                "requested_by": record.requested_by,
+                "source": record.source,
+                "status": record.status,
+                "created_at": record.created_at,
+            },
+        )
+
+    def get_workflow_request(self, request_id: str) -> WorkflowRequestRecord | None:
+        row = self._fetch_one("SELECT payload FROM workflow_requests WHERE request_id = ?", (request_id,))
+        if row is None:
+            return None
+        return WorkflowRequestRecord.from_json(row["payload"])
+
+    def insert_workflow_run(self, record: WorkflowRunRecord) -> None:
+        self._insert_json_record(
+            table_name="workflow_runs",
+            pk_column="run_id",
+            pk_value=record.run_id,
+            record=record,
+            columns={
+                "request_id": record.request_id,
+                "run_type": record.run_type,
+                "status": record.status,
+                "started_at": record.started_at,
+                "finished_at": record.finished_at,
+                "supersedes_run_id": record.supersedes_run_id,
+            },
+        )
+
+    def get_workflow_run(self, run_id: str) -> WorkflowRunRecord | None:
+        row = self._fetch_one("SELECT payload FROM workflow_runs WHERE run_id = ?", (run_id,))
+        if row is None:
+            return None
+        return WorkflowRunRecord.from_json(row["payload"])
+
+    def insert_question_batch(self, record: QuestionBatchRecord) -> None:
+        self._insert_json_record(
+            table_name="question_batches",
+            pk_column="question_batch_id",
+            pk_value=record.question_batch_id,
+            record=record,
+            columns={
+                "workflow_run_id": record.workflow_run_id,
+                "project_id": record.project_id,
+                "stage_id": record.stage_id,
+                "generated_by": record.generated_by,
+                "source": record.source,
+                "batch_goal": record.batch_goal,
+                "entry_question_id": record.entry_question_id,
+                "status": record.status,
+                "created_at": record.created_at,
+            },
+        )
+
+    def get_question_batch(self, question_batch_id: str) -> QuestionBatchRecord | None:
+        row = self._fetch_one("SELECT payload FROM question_batches WHERE question_batch_id = ?", (question_batch_id,))
+        if row is None:
+            return None
+        return QuestionBatchRecord.from_json(row["payload"])
+
+    def insert_question_items(self, records: list[QuestionItemRecord]) -> None:
+        with self._connect() as conn:
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO question_items (
+                        question_id,
+                        question_batch_id,
+                        question_type,
+                        prompt,
+                        intent,
+                        difficulty_level,
+                        order_index,
+                        status,
+                        created_at,
+                        payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.question_id,
+                        record.question_batch_id,
+                        record.question_type,
+                        record.prompt,
+                        record.intent,
+                        record.difficulty_level,
+                        record.order_index,
+                        record.status,
+                        record.created_at,
+                        record.to_json(),
+                    ),
+                )
+
+    def list_question_items(self, question_batch_id: str) -> list[QuestionItemRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM question_items
+            WHERE question_batch_id = ?
+            ORDER BY order_index
+            """,
+            (question_batch_id,),
+        )
+        return [QuestionItemRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_answer_batch(self, record: AnswerBatchRecord) -> None:
+        self._insert_json_record(
+            table_name="answer_batches",
+            pk_column="answer_batch_id",
+            pk_value=record.answer_batch_id,
+            record=record,
+            columns={
+                "question_batch_id": record.question_batch_id,
+                "workflow_run_id": record.workflow_run_id,
+                "submitted_by": record.submitted_by,
+                "submission_mode": record.submission_mode,
+                "completion_status": record.completion_status,
+                "submitted_at": record.submitted_at,
+                "status": record.status,
+            },
+        )
+
+    def get_answer_batch(self, answer_batch_id: str) -> AnswerBatchRecord | None:
+        row = self._fetch_one("SELECT payload FROM answer_batches WHERE answer_batch_id = ?", (answer_batch_id,))
+        if row is None:
+            return None
+        return AnswerBatchRecord.from_json(row["payload"])
+
+    def list_answer_batches(self, question_batch_id: str) -> list[AnswerBatchRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM answer_batches
+            WHERE question_batch_id = ?
+            ORDER BY submitted_at, answer_batch_id
+            """,
+            (question_batch_id,),
+        )
+        return [AnswerBatchRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_answer_items(self, records: list[AnswerItemRecord]) -> None:
+        with self._connect() as conn:
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO answer_items (
+                        answer_item_id,
+                        answer_batch_id,
+                        question_id,
+                        answered_by,
+                        answer_text,
+                        answer_format,
+                        order_index,
+                        answered_at,
+                        status,
+                        revision_of_answer_item_id,
+                        payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.answer_item_id,
+                        record.answer_batch_id,
+                        record.question_id,
+                        record.answered_by,
+                        record.answer_text,
+                        record.answer_format,
+                        record.order_index,
+                        record.answered_at,
+                        record.status,
+                        record.revision_of_answer_item_id,
+                        record.to_json(),
+                    ),
+                )
+
+    def list_answer_items(self, answer_batch_id: str) -> list[AnswerItemRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM answer_items
+            WHERE answer_batch_id = ?
+            ORDER BY order_index
+            """,
+            (answer_batch_id,),
+        )
+        return [AnswerItemRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_evaluation_batch(self, record: EvaluationBatchRecord) -> None:
+        self._insert_json_record(
+            table_name="evaluation_batches",
+            pk_column="evaluation_batch_id",
+            pk_value=record.evaluation_batch_id,
+            record=record,
+            columns={
+                "answer_batch_id": record.answer_batch_id,
+                "workflow_run_id": record.workflow_run_id,
+                "project_id": record.project_id,
+                "stage_id": record.stage_id,
+                "evaluated_by": record.evaluated_by,
+                "evaluator_version": record.evaluator_version,
+                "confidence": record.confidence,
+                "status": record.status,
+                "evaluated_at": record.evaluated_at,
+                "supersedes_evaluation_batch_id": record.supersedes_evaluation_batch_id,
+            },
+        )
+
+    def get_evaluation_batch(self, evaluation_batch_id: str) -> EvaluationBatchRecord | None:
+        row = self._fetch_one(
+            "SELECT payload FROM evaluation_batches WHERE evaluation_batch_id = ?",
+            (evaluation_batch_id,),
+        )
+        if row is None:
+            return None
+        return EvaluationBatchRecord.from_json(row["payload"])
+
+    def list_evaluation_batches(self, answer_batch_id: str) -> list[EvaluationBatchRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM evaluation_batches
+            WHERE answer_batch_id = ?
+            ORDER BY evaluated_at, evaluation_batch_id
+            """,
+            (answer_batch_id,),
+        )
+        return [EvaluationBatchRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_evaluation_items(self, records: list[EvaluationItemRecord]) -> None:
+        with self._connect() as conn:
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO evaluation_items (
+                        evaluation_item_id,
+                        evaluation_batch_id,
+                        question_id,
+                        answer_item_id,
+                        local_verdict,
+                        confidence,
+                        status,
+                        evaluated_at,
+                        payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.evaluation_item_id,
+                        record.evaluation_batch_id,
+                        record.question_id,
+                        record.answer_item_id,
+                        record.local_verdict,
+                        record.confidence,
+                        record.status,
+                        record.evaluated_at,
+                        record.to_json(),
+                    ),
+                )
+
+    def list_evaluation_items(self, evaluation_batch_id: str) -> list[EvaluationItemRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM evaluation_items
+            WHERE evaluation_batch_id = ?
+            ORDER BY evaluation_item_id
+            """,
+            (evaluation_batch_id,),
+        )
+        return [EvaluationItemRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_evidence_spans(self, records: list[EvidenceSpanRecord]) -> None:
+        with self._connect() as conn:
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO evidence_spans (
+                        evidence_span_id,
+                        evaluation_item_id,
+                        answer_item_id,
+                        span_type,
+                        supports_dimension,
+                        content,
+                        start_offset,
+                        end_offset,
+                        created_at,
+                        payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.evidence_span_id,
+                        record.evaluation_item_id,
+                        record.answer_item_id,
+                        record.span_type,
+                        record.supports_dimension,
+                        record.content,
+                        record.start_offset,
+                        record.end_offset,
+                        record.created_at,
+                        record.to_json(),
+                    ),
+                )
+
+    def list_evidence_spans(self, evaluation_item_id: str) -> list[EvidenceSpanRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM evidence_spans
+            WHERE evaluation_item_id = ?
+            ORDER BY created_at, evidence_span_id
+            """,
+            (evaluation_item_id,),
+        )
+        return [EvidenceSpanRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_assessment_fact_batch(self, record: AssessmentFactBatchRecord) -> None:
+        self._insert_json_record(
+            table_name="assessment_fact_batches",
+            pk_column="assessment_fact_batch_id",
+            pk_value=record.assessment_fact_batch_id,
+            record=record,
+            columns={
+                "evaluation_batch_id": record.evaluation_batch_id,
+                "workflow_run_id": record.workflow_run_id,
+                "synthesized_by": record.synthesized_by,
+                "synthesizer_version": record.synthesizer_version,
+                "status": record.status,
+                "synthesized_at": record.synthesized_at,
+                "supersedes_assessment_fact_batch_id": record.supersedes_assessment_fact_batch_id,
+            },
+        )
+
+    def get_latest_assessment_fact_batch(self, project_id: str, stage_id: str) -> AssessmentFactBatchRecord | None:
+        row = self._fetch_one(
+            """
+            SELECT assessment_fact_batches.payload
+            FROM assessment_fact_batches
+            JOIN evaluation_batches
+                ON evaluation_batches.evaluation_batch_id = assessment_fact_batches.evaluation_batch_id
+            WHERE evaluation_batches.project_id = ? AND evaluation_batches.stage_id = ?
+            ORDER BY assessment_fact_batches.synthesized_at DESC, assessment_fact_batches.assessment_fact_batch_id DESC
+            LIMIT 1
+            """,
+            (project_id, stage_id),
+        )
+        if row is None:
+            return None
+        return AssessmentFactBatchRecord.from_json(row["payload"])
+
+    def insert_assessment_fact_items(self, records: list[AssessmentFactItemRecord]) -> None:
+        with self._connect() as conn:
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO assessment_fact_items (
+                        assessment_fact_item_id,
+                        assessment_fact_batch_id,
+                        source_evaluation_item_id,
+                        fact_type,
+                        topic_key,
+                        title,
+                        confidence,
+                        status,
+                        created_at,
+                        supersedes_assessment_fact_item_id,
+                        payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.assessment_fact_item_id,
+                        record.assessment_fact_batch_id,
+                        record.source_evaluation_item_id,
+                        record.fact_type,
+                        record.topic_key,
+                        record.title,
+                        record.confidence,
+                        record.status,
+                        record.created_at,
+                        record.supersedes_assessment_fact_item_id,
+                        record.to_json(),
+                    ),
+                )
+
+    def list_assessment_fact_items(self, assessment_fact_batch_id: str) -> list[AssessmentFactItemRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM assessment_fact_items
+            WHERE assessment_fact_batch_id = ?
+            ORDER BY created_at, assessment_fact_item_id
+            """,
+            (assessment_fact_batch_id,),
+        )
+        return [AssessmentFactItemRecord.from_json(row["payload"]) for row in rows]
+
     def upsert_question_set(self, question_set: QuestionSet) -> None:
         payload = question_set.to_json()
         with self._connect() as conn:
@@ -1185,6 +1812,7 @@ class SQLiteStore:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
     def _fetch_one(self, query: str, params: tuple[Any, ...]) -> sqlite3.Row | None:
@@ -1194,6 +1822,27 @@ class SQLiteStore:
     def _fetch_all(self, query: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
         with self._connect() as conn:
             return conn.execute(query, params).fetchall()
+
+    def _insert_json_record(
+        self,
+        *,
+        table_name: str,
+        pk_column: str,
+        pk_value: Any,
+        record: Any,
+        columns: dict[str, Any],
+    ) -> None:
+        column_names = [pk_column, *columns.keys(), "payload"]
+        placeholders = ", ".join("?" for _ in column_names)
+        values = [pk_value, *columns.values(), record.to_json()]
+        with self._connect() as conn:
+            conn.execute(
+                f"""
+                INSERT OR REPLACE INTO {table_name} ({", ".join(column_names)})
+                VALUES ({placeholders})
+                """,
+                values,
+            )
 
     def _dumps_payload(self, payload: dict[str, Any]) -> str:
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
