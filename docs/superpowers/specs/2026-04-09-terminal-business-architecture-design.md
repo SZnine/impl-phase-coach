@@ -1117,3 +1117,241 @@ Knowledge Graph 的唯一反哺形式是：
 基于这版对象编排，继续做两件事中的一件：
 1. 优化第二版正式架构图，让图里直接带出对象宿主关系
 2. 继续下钻到“哪些对象是 append-only，哪些对象是 mutable current state 的 current record”
+
+---
+
+## 20. 当前系统到终态系统的整体重构迁移路线
+
+这一节不再继续做局部对象细化，而是回答一个更关键的问题：
+
+`从当前项目状态走到绝对终态，是否需要整体重构，以及应该怎么迁。`
+
+当前冻结结论是：
+
+`是，需要一次整体重构；更准确地说，是一次以终态业务闭环为目标的主链迁移式整体重构。`
+
+它不是：
+1. 一次性推倒重写
+2. 继续靠局部优化自然长到终态
+
+它是：
+1. 保留当前可复用骨架
+2. 并行建立终态新主链
+3. 逐步切走旧主链职责
+4. 最终收敛到终态单主链
+
+### 20.1 当前项目状态在终态演进中的位置
+
+当前项目不是终态系统，更准确的定位是：
+
+`Knowledge Map V1 feasibility system`
+
+它已经证明：
+1. 知识对象宿主能成立
+2. explanation 宿主能成立
+3. 最小关系链能成立
+4. 前后端基础读面能成立
+5. demo/workbench 能成立
+
+但它还没有证明：
+1. 终态题集工作流成立
+2. 终态整组评判成立
+3. Assessment Facts 真正成为稳定中间事实层
+4. Knowledge Maintenance Agent 主导图谱重构成立
+
+因此，当前系统的价值是：
+
+`它是终态系统的骨架前身，不是终态主链本身。`
+
+### 20.2 终态演进的 6 段路线
+
+#### 第 0 段：概念验证前
+特征：
+1. 没有稳定对象骨架
+2. 没有工作流闭环
+3. 没有知识图宿主
+
+#### 第 1 段：V1 可行性闭环
+当前项目已经完成的部分：
+1. knowledge map 基础对象
+2. explanation cache / generator 边界
+3. supports 最小链路
+4. 前后端基础读面
+5. demo 入口与隔离数据
+
+#### 第 2 段：终态架构预设
+当前刚完成的部分：
+1. 终态业务主轴
+2. 三类 agent 分工
+3. 五层数据库分层
+4. 单向数据流
+5. 五层核心对象编排
+6. 第二版正式架构图
+
+#### 第 3 段：终态业务闭环最小落地
+这是当前真正还没开始的部分：
+1. Project Agent 出完整题集
+2. 用户整组作答
+3. Evaluator Agent 整组评判
+4. Assessment Synthesizer 落事实层
+
+#### 第 4 段：Facts 驱动的图谱生长
+在这段里：
+1. 知识图不再直接吃旧 assessment
+2. graph projection 改为主要吃 `AssessmentFactBatch / AssessmentFactItem / KnowledgeSignal`
+3. 旧的直接投影主链逐步退场
+
+#### 第 5 段：Knowledge Maintenance Agent 接管图谱重构
+在这段里：
+1. 用户显式发起 `MaintenanceRequest`
+2. maintenance agent 读取 facts + current graph
+3. 输出 `GraphRewriteRecord + GraphRevision`
+4. 前端改为读 active revision
+
+#### 第 6 段：终态产品化增强
+这一段才做：
+1. 可交互星图
+2. 更成熟治理
+3. 中文 UI 产品化
+4. 更强的 LLM/agent 质量提升
+5. 面试训练并行模式
+
+### 20.3 模块级迁移判断：保留 / 保留外壳重写内部 / 被替代
+
+#### A. 可直接保留的骨架
+1. `KnowledgeNode / KnowledgeRelation / UserNodeState / FocusCluster / FocusExplanation` 的概念分层
+2. explanation cache 与 generator 分离
+3. graph/main view 的基础读面
+4. demo 隔离数据思路
+5. “历史层和图谱层要分开”这个核心判断
+
+#### B. 保留外壳、重写内部
+1. `workspace_api`
+   - 可保留为应用协调/读面入口的一部分
+   - 内部职责会被拆给：
+     - Workflow
+     - Evaluation
+     - Assessment Synthesizer
+     - Graph Read Service
+2. `review_flow_service`
+   - 当前承担过渡题目与过渡评判主链
+   - 终态里内部要被：
+     - Project Agent 出题
+     - Evaluator Agent 评判
+     - Assessment Synthesizer
+     替换
+3. `profile_space_service`
+   - 当前承担很多 `assessment -> knowledge projection` 过渡职责
+   - 终态里保留部分投影能力
+   - 但输入必须迁到正式 `Assessment Facts / Knowledge Signals`
+
+#### C. 将被终态主链替代
+1. 当前基于过渡题目的答题流
+2. 当前过渡评判方式
+3. 当前从过渡 assessment 直接长知识图的主链
+4. 当前 demo/seed 用来证明 supports 外显的辅助线
+
+### 20.4 整体迁移顺序
+
+#### 第一步：先落终态数据骨架
+目标：
+把五层数据库骨架和核心对象真正放进代码世界。
+
+这一段做什么：
+1. 建 `Workflow Layer`
+2. 建 `Problem / Answer Layer`
+3. 建 `Evaluation Layer`
+4. 建 `Assessment Facts Layer`
+5. 先给宿主和最小落库能力，不先追求完整业务流
+
+为什么先做：
+因为终态主链最先缺的是数据主骨架，而不是页面。
+
+#### 第二步：建立终态最小业务闭环
+目标：
+真正跑通一次终态主链最小闭环。
+
+最小闭环是：
+1. 用户发起
+2. Project Agent 出整组题
+3. 用户整组回答
+4. Evaluator Agent 整组评判
+5. Assessment Synthesizer 落 facts
+
+这一步先不要求 Knowledge Maintenance Agent 完整上线。
+
+#### 第三步：知识图切到 Facts 驱动
+目标：
+让 graph projection 的上游真相从“旧 assessment”迁到“正式 facts/signals”。
+
+这一段做什么：
+1. projection 读取 `AssessmentFactBatch / AssessmentFactItem / KnowledgeSignal`
+2. 逐步下线旧的直投影逻辑
+3. 保留当前 Knowledge Graph 对象层，但切换输入真相来源
+
+#### 第四步：Knowledge Maintenance Agent 正式接管重构
+目标：
+把整理/压缩/重构从临时能力提升成正式工作流。
+
+这一段做什么：
+1. 用户发起 `MaintenanceRequest`
+2. maintenance agent 读取 facts + current graph
+3. 产出 `GraphRewriteRecord + GraphRevision`
+4. 前端读 active revision
+
+#### 第五步：终态产品化增强
+目标：
+从“终态主链可跑”提升到“终态产品可用”。
+
+这一段才做：
+1. 可交互星图
+2. 中文 UI 产品化
+3. 更强治理
+4. 更高语义 LLM/agent 升级
+
+### 20.5 当前明确不该继续投入的局部优化
+
+为了避免局部过度优化，当前应视为低优先级冻结区：
+1. demo 页面继续抛光
+2. graph 继续轻交互增强
+3. explanation 文案继续细调
+4. 对象字段再做大量局部微优化
+5. 高频小 checkpoint 驱动的“做一点收一点”
+
+这些都不是当前最大的断层。
+
+### 20.6 当前到终态的推荐工程策略
+
+当前推荐的不是 big bang，而是：
+
+`双轨过渡 + 主链替换`
+
+具体策略：
+1. 旧主链继续可运行
+2. 新终态主链单独建立
+3. 新主链先在最小闭环里证明成立
+4. 再逐层切走旧主链职责
+5. 最后收敛到终态单主链
+
+### 20.7 当前迁移路线冻结结论
+
+#### 当前最重要的判断
+1. 当前项目已经完成“终态架构预设”，但还没有进入“终态业务闭环最小落地”
+2. 接下来不是继续局部优化，而是进入主链迁移
+3. 当前真正该先迁移的是：
+   - `Workflow`
+   - `Problem / Answer`
+   - `Evaluation`
+   - `Assessment Facts`
+
+#### 当前不建议优先推进的事项
+1. 星图交互继续增强
+2. demo 外显继续抛光
+3. 中文 UI 全量化
+4. graph maintenance 的高级治理功能
+
+#### 当前建议的下一步
+基于这条迁移路线，继续细化：
+1. `旧主链 -> 新主链` 的模块级迁移图
+2. 哪些对象是 `append-only`
+3. 哪些对象是 `mutable current state`
