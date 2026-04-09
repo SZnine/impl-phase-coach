@@ -90,6 +90,17 @@ class WeakAssessmentClient:
         }
 
 
+def _semantic_question_set() -> QuestionSet:
+    return QuestionSet(
+        question_set_id="set-1",
+        stage_review_id="proj-1:stage-1",
+        title="Question set set-1",
+        status="active",
+        question_ids=["set-1-q-1", "set-1-q-2"],
+        active_question_id="set-1-q-1",
+    )
+
+
 def test_generate_question_set_returns_structured_questions() -> None:
     service = ReviewFlowService.for_testing()
 
@@ -122,6 +133,8 @@ def test_generate_question_set_returns_structured_questions() -> None:
 def test_generate_question_set_persists_first_checkpoint_question_chain(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
+    question_set = _semantic_question_set()
+    store.upsert_question_set(question_set)
     service = ReviewFlowService.with_store(store)
 
     response = service.generate_question_set(
@@ -188,14 +201,7 @@ def test_generate_question_set_persists_first_checkpoint_question_chain(tmp_path
         supersedes_run_id=None,
         payload={"question_count": 2, "request_id": "req-qgen-1"},
     )
-    assert store.get_question_set("set-1") == QuestionSet(
-        question_set_id="set-1",
-        stage_review_id="proj-1:stage-1",
-        title="qb-req-qgen-1",
-        status="active",
-        question_ids=["req-qgen-1-q-1", "req-qgen-1-q-2"],
-        active_question_id="req-qgen-1-q-1",
-    )
+    assert store.get_question_set("set-1") == question_set
     assert store.get_question_batch("qb-req-qgen-1") == QuestionBatchRecord(
         question_batch_id="qb-req-qgen-1",
         workflow_run_id="run-req-qgen-1",
@@ -280,6 +286,8 @@ def test_submit_answer_uses_current_question_context_and_user_excerpt() -> None:
 def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
+    question_set = _semantic_question_set()
+    store.upsert_question_set(question_set)
     service = ReviewFlowService(assessment_client=CapturingAssessmentClient.for_testing(), store=store)
 
     service.generate_question_set(
@@ -318,14 +326,7 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
     )
 
     assert response.success is True
-    assert store.get_question_set("set-1") == QuestionSet(
-        question_set_id="set-1",
-        stage_review_id="proj-1:stage-1",
-        title="qb-req-qgen-1",
-        status="active",
-        question_ids=["req-qgen-1-q-1", "req-qgen-1-q-2"],
-        active_question_id="req-qgen-1-q-1",
-    )
+    assert store.get_question_set("set-1") == question_set
     assert store.get_question_batch("qb-req-qgen-1") == QuestionBatchRecord(
         question_batch_id="qb-req-qgen-1",
         workflow_run_id="run-req-qgen-1",
@@ -386,6 +387,8 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
 def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
+    question_set = _semantic_question_set()
+    store.upsert_question_set(question_set)
     service = ReviewFlowService(assessment_client=CapturingAssessmentClient.for_testing(), store=store)
 
     response = service.submit_answer(
@@ -404,6 +407,7 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
     )
 
     assert response.success is True
+    assert store.get_question_set("set-1") == question_set
     assert store.get_workflow_request("req-chain-1") == WorkflowRequestRecord(
         request_id="req-chain-1",
         request_type="assessment",
@@ -433,7 +437,7 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
         generated_by="review_flow_service",
         source="question_detail",
         batch_goal="freeze the minimal Question / Assessment / Decision boundary",
-        entry_question_id="set-1-q-1",
+        entry_question_id="req-chain-1-set-1-q-1",
         status="active",
         created_at="2026-04-09T12:00:00Z",
         payload={"question_count": 1, "request_id": "req-chain-1"},
