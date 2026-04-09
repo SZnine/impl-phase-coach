@@ -16,7 +16,7 @@ from review_gate.checkpoint_models import (
     QuestionBatchRecord,
     QuestionItemRecord,
 )
-from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, StageReview
+from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, QuestionSet, StageReview
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
     AssessmentSummaryDTO,
@@ -463,7 +463,7 @@ class ReviewFlowService:
                     payload={"request_id": request.request_id},
                 )
             )
-            workflow_run_id, question_batch_id = self._resolve_submit_question_chain(
+            workflow_run_id, question_batch_id, storage_question_id = self._resolve_submit_question_chain(
                 request=request,
                 current_question=current_question,
             )
@@ -481,7 +481,7 @@ class ReviewFlowService:
             evaluation_item = EvaluationItemRecord(
                 evaluation_item_id=evaluation_item_id,
                 evaluation_batch_id=evaluation_batch_id,
-                question_id=request.question_id,
+                question_id=storage_question_id,
                 answer_item_id=answer_item_id,
                 local_verdict=verdict,
                 confidence=float(assessment_response.get("confidence", 0.0)),
@@ -532,7 +532,7 @@ class ReviewFlowService:
                     AnswerItemRecord(
                         answer_item_id=answer_item_id,
                         answer_batch_id=answer_batch_id,
-                        question_id=request.question_id,
+                        question_id=storage_question_id,
                         answered_by=request.actor_id,
                         answer_text=request.answer_text,
                         answer_format="plain_text",
@@ -609,14 +609,16 @@ class ReviewFlowService:
             project_id=str(request["project_id"]),
             stage_id=str(request["stage_id"]),
         )
-        question_batch_id = question_set_id or f"qb-{request_id}"
+        question_batch_id = f"qb-{request_id}"
         questions = list(response.get("questions", []))
         persisted_question_items: list[QuestionItemRecord] = []
         for index, item in enumerate(questions):
-            persisted_question_id = self._normalize_generated_question_id(
+            raw_question_id = str(item.get("question_id", f"q-{index + 1}"))
+            transport_question_id = self._build_transport_question_id(
                 question_set_id=question_set_id,
-                raw_question_id=str(item.get("question_id", f"q-{index + 1}")),
+                raw_question_id=raw_question_id,
             )
+            persisted_question_id = f"{request_id}-{raw_question_id}"
             persisted_question_items.append(
                 QuestionItemRecord(
                     question_id=persisted_question_id,
@@ -631,6 +633,7 @@ class ReviewFlowService:
                     payload={
                         "expected_signals": list(item.get("expected_signals", [])),
                         "source_context": list(item.get("source_context", [])),
+                        "transport_question_id": transport_question_id,
                     },
                 )
             )
@@ -675,13 +678,27 @@ class ReviewFlowService:
             )
         )
         self._store.insert_question_items(persisted_question_items)
+        if question_set_id:
+            self._store.upsert_question_set(
+                QuestionSet(
+                    question_set_id=question_set_id,
+                    stage_review_id=self._get_stage_review_id(
+                        project_id=str(request["project_id"]),
+                        stage_id=str(request["stage_id"]),
+                    ),
+                    title=question_batch_id,
+                    status="active",
+                    question_ids=[item.question_id for item in persisted_question_items],
+                    active_question_id=(persisted_question_items[0].question_id if persisted_question_items else None),
+                )
+            )
 
     def _resolve_submit_question_chain(
         self,
         *,
         request: SubmitAnswerRequest,
         current_question: CurrentQuestionContext,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str]:
         existing_chain = self._find_existing_generated_question_chain(
             question_set_id=request.question_set_id,
             question_id=request.question_id,
@@ -690,28 +707,33 @@ class ReviewFlowService:
             return existing_chain
         return self._persist_submit_question_chain_backfill(request=request, current_question=current_question)
 
-    def _find_existing_generated_question_chain(self, *, question_set_id: str, question_id: str) -> tuple[str, str] | None:
+    def _find_existing_generated_question_chain(self, *, question_set_id: str, question_id: str) -> tuple[str, str, str] | None:
         if self._store is None:
             return None
-        question_batch = self._store.get_question_batch(question_set_id)
+        question_set = self._store.get_question_set(question_set_id)
+        if question_set is None or not question_set.title.strip():
+            return None
+        question_batch = self._store.get_question_batch(question_set.title.strip())
         if question_batch is None:
             return None
         workflow_run = self._store.get_workflow_run(question_batch.workflow_run_id)
         if workflow_run is None:
             return None
         question_items = self._store.list_question_items(question_batch.question_batch_id)
-        if not any(item.question_id == question_id for item in question_items):
-            return None
-        return question_batch.workflow_run_id, question_batch.question_batch_id
+        for item in question_items:
+            if item.payload.get("transport_question_id") == question_id or item.question_id == question_id:
+                return question_batch.workflow_run_id, question_batch.question_batch_id, item.question_id
+        return None
 
     def _persist_submit_question_chain_backfill(
         self,
         *,
         request: SubmitAnswerRequest,
         current_question: CurrentQuestionContext,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str]:
         workflow_run_id = f"run-{request.request_id}"
         question_batch_id = f"qb-{request.request_id}"
+        storage_question_id = f"{request.request_id}-{request.question_id}"
         self._store.insert_workflow_run(
             WorkflowRunRecord(
                 run_id=workflow_run_id,
@@ -742,7 +764,7 @@ class ReviewFlowService:
         self._store.insert_question_items(
             [
                 QuestionItemRecord(
-                    question_id=request.question_id,
+                    question_id=storage_question_id,
                     question_batch_id=question_batch_id,
                     question_type=current_question.question_level,
                     prompt=current_question.question_prompt,
@@ -754,11 +776,18 @@ class ReviewFlowService:
                     payload={
                         "expected_signals": current_question.expected_signals,
                         "source_context": current_question.source_context,
+                        "transport_question_id": request.question_id,
                     },
                 )
             ]
         )
-        return workflow_run_id, question_batch_id
+        return workflow_run_id, question_batch_id, storage_question_id
+
+    def _get_stage_review_id(self, *, project_id: str, stage_id: str) -> str:
+        stage_review = self._get_stage_review(project_id, stage_id)
+        if stage_review is not None:
+            return stage_review.stage_review_id
+        return f"{project_id}:{stage_id}"
 
     def _resolve_stage_question_set_id(self, *, project_id: str, stage_id: str) -> str:
         stage = self._get_stage_review(project_id, stage_id)
@@ -766,7 +795,7 @@ class ReviewFlowService:
             return stage.active_question_set_id
         return str(self._get_stage_definition(project_id, stage_id).get("active_question_set_id", ""))
 
-    def _normalize_generated_question_id(self, *, question_set_id: str, raw_question_id: str) -> str:
+    def _build_transport_question_id(self, *, question_set_id: str, raw_question_id: str) -> str:
         if not question_set_id:
             return raw_question_id
         if raw_question_id.startswith(f"{question_set_id}-"):

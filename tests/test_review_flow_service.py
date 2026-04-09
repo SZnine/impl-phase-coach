@@ -1,4 +1,5 @@
 from review_gate.action_dtos import SubmitAnswerRequest
+from review_gate.domain import QuestionSet
 from review_gate.review_flow_service import ReviewFlowService
 from review_gate.storage_sqlite import SQLiteStore
 from pathlib import Path
@@ -187,23 +188,31 @@ def test_generate_question_set_persists_first_checkpoint_question_chain(tmp_path
         supersedes_run_id=None,
         payload={"question_count": 2, "request_id": "req-qgen-1"},
     )
-    assert store.get_question_batch("set-1") == QuestionBatchRecord(
-        question_batch_id="set-1",
+    assert store.get_question_set("set-1") == QuestionSet(
+        question_set_id="set-1",
+        stage_review_id="proj-1:stage-1",
+        title="qb-req-qgen-1",
+        status="active",
+        question_ids=["req-qgen-1-q-1", "req-qgen-1-q-2"],
+        active_question_id="req-qgen-1-q-1",
+    )
+    assert store.get_question_batch("qb-req-qgen-1") == QuestionBatchRecord(
+        question_batch_id="qb-req-qgen-1",
         workflow_run_id="run-req-qgen-1",
         project_id="proj-1",
         stage_id="stage-1",
         generated_by="question_generation_client",
         source="review_flow_service",
         batch_goal="freeze the minimal Question / Assessment / Decision boundary",
-        entry_question_id="set-1-q-1",
+        entry_question_id="req-qgen-1-q-1",
         status="active",
         created_at="",
         payload={"question_count": 2, "request_id": "req-qgen-1"},
     )
-    assert store.list_question_items("set-1") == [
+    assert store.list_question_items("qb-req-qgen-1") == [
         QuestionItemRecord(
-            question_id="set-1-q-1",
-            question_batch_id="set-1",
+            question_id="req-qgen-1-q-1",
+            question_batch_id="qb-req-qgen-1",
             question_type="core",
             prompt="Explain the current-stage boundary.",
             intent="Check current-stage understanding.",
@@ -211,11 +220,15 @@ def test_generate_question_set_persists_first_checkpoint_question_chain(tmp_path
             order_index=0,
             status="ready",
             created_at="",
-            payload={"expected_signals": ["Question, Assessment, Decision split"], "source_context": []},
+            payload={
+                "expected_signals": ["Question, Assessment, Decision split"],
+                "source_context": [],
+                "transport_question_id": "set-1-q-1",
+            },
         ),
         QuestionItemRecord(
-            question_id="set-1-q-2",
-            question_batch_id="set-1",
+            question_id="req-qgen-1-q-2",
+            question_batch_id="qb-req-qgen-1",
             question_type="why",
             prompt="Why did we choose this boundary?",
             intent="Check reasoning about trade-offs.",
@@ -223,7 +236,11 @@ def test_generate_question_set_persists_first_checkpoint_question_chain(tmp_path
             order_index=1,
             status="ready",
             created_at="",
-            payload={"expected_signals": ["module vs interface"], "source_context": []},
+            payload={
+                "expected_signals": ["module vs interface"],
+                "source_context": [],
+                "transport_question_id": "set-1-q-2",
+            },
         ),
     ]
 
@@ -301,15 +318,23 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
     )
 
     assert response.success is True
-    assert store.get_question_batch("set-1") == QuestionBatchRecord(
-        question_batch_id="set-1",
+    assert store.get_question_set("set-1") == QuestionSet(
+        question_set_id="set-1",
+        stage_review_id="proj-1:stage-1",
+        title="qb-req-qgen-1",
+        status="active",
+        question_ids=["req-qgen-1-q-1", "req-qgen-1-q-2"],
+        active_question_id="req-qgen-1-q-1",
+    )
+    assert store.get_question_batch("qb-req-qgen-1") == QuestionBatchRecord(
+        question_batch_id="qb-req-qgen-1",
         workflow_run_id="run-req-qgen-1",
         project_id="proj-1",
         stage_id="stage-1",
         generated_by="question_generation_client",
         source="review_flow_service",
         batch_goal="freeze the minimal Question / Assessment / Decision boundary",
-        entry_question_id="set-1-q-1",
+        entry_question_id="req-qgen-1-q-1",
         status="active",
         created_at="",
         payload={"question_count": 2, "request_id": "req-qgen-1"},
@@ -318,7 +343,7 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
     assert store.get_question_batch("qb-req-chain-existing-1") is None
     assert store.get_answer_batch("ab-req-chain-existing-1") == AnswerBatchRecord(
         answer_batch_id="ab-req-chain-existing-1",
-        question_batch_id="set-1",
+        question_batch_id="qb-req-qgen-1",
         workflow_run_id="run-req-qgen-1",
         submitted_by="local-user",
         submission_mode="single_submit",
@@ -327,6 +352,21 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
         status="submitted",
         payload={"request_id": "req-chain-existing-1"},
     )
+    assert store.list_answer_items("ab-req-chain-existing-1") == [
+        AnswerItemRecord(
+            answer_item_id="ai-req-chain-existing-1-0",
+            answer_batch_id="ab-req-chain-existing-1",
+            question_id="req-qgen-1-q-1",
+            answered_by="local-user",
+            answer_text="We split the boundary to keep state and scoring separate.",
+            answer_format="plain_text",
+            order_index=0,
+            answered_at="2026-04-09T12:00:00Z",
+            status="answered",
+            revision_of_answer_item_id=None,
+            payload={"answer_excerpt": "We split the boundary to keep state and scoring separate."},
+        )
+    ]
     assert store.get_evaluation_batch("eb-req-chain-existing-1") == EvaluationBatchRecord(
         evaluation_batch_id="eb-req-chain-existing-1",
         answer_batch_id="ab-req-chain-existing-1",
@@ -400,7 +440,7 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
     )
     assert store.list_question_items("qb-req-chain-1") == [
         QuestionItemRecord(
-            question_id="set-1-q-1",
+            question_id="req-chain-1-set-1-q-1",
             question_batch_id="qb-req-chain-1",
             question_type="core",
             prompt="Explain the boundary for question set-1-q-1.",
@@ -409,7 +449,11 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
             order_index=0,
             status="ready",
             created_at="2026-04-09T12:00:00Z",
-            payload={"expected_signals": ["stage-1", "set-1", "set-1-q-1", "core"], "source_context": ["stage-1:set-1:set-1-q-1"]},
+            payload={
+                "expected_signals": ["stage-1", "set-1", "set-1-q-1", "core"],
+                "source_context": ["stage-1:set-1:set-1-q-1"],
+                "transport_question_id": "set-1-q-1",
+            },
         )
     ]
     assert store.get_answer_batch("ab-req-chain-1") == AnswerBatchRecord(
@@ -427,7 +471,7 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
         AnswerItemRecord(
             answer_item_id="ai-req-chain-1-0",
             answer_batch_id="ab-req-chain-1",
-            question_id="set-1-q-1",
+            question_id="req-chain-1-set-1-q-1",
             answered_by="local-user",
             answer_text="We split the boundary to keep state and scoring separate.",
             answer_format="plain_text",
