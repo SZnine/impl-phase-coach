@@ -384,6 +384,111 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
     )
 
 
+def test_submit_answer_reuses_newest_generated_question_batch_for_same_question_set(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    question_set = _semantic_question_set()
+    store.upsert_question_set(question_set)
+    service = ReviewFlowService(assessment_client=CapturingAssessmentClient.for_testing(), store=store)
+
+    service.generate_question_set(
+        {
+            "request_id": "req-qgen-9",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "module-interface-boundary",
+            "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+            "stage_summary": "Task 4 adapter shell",
+            "stage_artifacts": [],
+            "stage_exit_criteria": [],
+            "current_decisions": ["Question, Assessment, Decision split"],
+            "key_logic_points": ["structured DTOs"],
+            "known_weak_points": [],
+            "boundary_focus": ["module vs interface"],
+            "question_strategy": "core_and_why",
+            "max_questions": 2,
+            "source_refs": [],
+        }
+    )
+    service.generate_question_set(
+        {
+            "request_id": "req-qgen-10",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "module-interface-boundary",
+            "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+            "stage_summary": "Task 4 adapter shell",
+            "stage_artifacts": [],
+            "stage_exit_criteria": [],
+            "current_decisions": ["Question, Assessment, Decision split"],
+            "key_logic_points": ["structured DTOs"],
+            "known_weak_points": [],
+            "boundary_focus": ["module vs interface"],
+            "question_strategy": "core_and_why",
+            "max_questions": 2,
+            "source_refs": [],
+        }
+    )
+
+    response = service.submit_answer(
+        SubmitAnswerRequest(
+            request_id="req-chain-existing-2",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-09T13:00:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="We split the boundary to keep state and scoring separate.",
+            draft_id=None,
+        )
+    )
+
+    assert response.success is True
+    assert store.get_question_set("set-1") == question_set
+    assert store.get_answer_batch("ab-req-chain-existing-2") == AnswerBatchRecord(
+        answer_batch_id="ab-req-chain-existing-2",
+        question_batch_id="qb-req-qgen-10",
+        workflow_run_id="run-req-qgen-10",
+        submitted_by="local-user",
+        submission_mode="single_submit",
+        completion_status="complete",
+        submitted_at="2026-04-09T13:00:00Z",
+        status="submitted",
+        payload={"request_id": "req-chain-existing-2"},
+    )
+    assert store.list_answer_items("ab-req-chain-existing-2") == [
+        AnswerItemRecord(
+            answer_item_id="ai-req-chain-existing-2-0",
+            answer_batch_id="ab-req-chain-existing-2",
+            question_id="req-qgen-10-q-1",
+            answered_by="local-user",
+            answer_text="We split the boundary to keep state and scoring separate.",
+            answer_format="plain_text",
+            order_index=0,
+            answered_at="2026-04-09T13:00:00Z",
+            status="answered",
+            revision_of_answer_item_id=None,
+            payload={"answer_excerpt": "We split the boundary to keep state and scoring separate."},
+        )
+    ]
+    assert store.get_evaluation_batch("eb-req-chain-existing-2") == EvaluationBatchRecord(
+        evaluation_batch_id="eb-req-chain-existing-2",
+        answer_batch_id="ab-req-chain-existing-2",
+        workflow_run_id="run-req-qgen-10",
+        project_id="proj-1",
+        stage_id="stage-1",
+        evaluated_by="assessment_agent",
+        evaluator_version="review_flow_service:first-checkpoint",
+        confidence=0.8,
+        status="completed",
+        evaluated_at="2026-04-09T13:00:00Z",
+        supersedes_evaluation_batch_id=None,
+        payload={"request_id": "req-chain-existing-2"},
+    )
+
+
 def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
