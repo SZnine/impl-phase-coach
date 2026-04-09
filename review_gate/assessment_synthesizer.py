@@ -23,16 +23,7 @@ class AssessmentSynthesizer:
         evaluation_items: list[EvaluationItemRecord],
         evidence_spans: list[EvidenceSpanRecord],
     ) -> tuple[AssessmentFactBatchRecord, list[AssessmentFactItemRecord]]:
-        fact_batch = AssessmentFactBatchRecord(
-            assessment_fact_batch_id=f"afb-{evaluation_batch.evaluation_batch_id}",
-            evaluation_batch_id=evaluation_batch.evaluation_batch_id,
-            workflow_run_id=workflow_run_id,
-            synthesized_by="assessment_synthesizer",
-            synthesizer_version=self.synthesizer_version,
-            status="completed",
-            synthesized_at=evaluation_batch.evaluated_at,
-            payload={"item_count": len(evaluation_items)},
-        )
+        assessment_fact_batch_id = f"afb-{evaluation_batch.evaluation_batch_id}"
         fact_items: list[AssessmentFactItemRecord] = []
         for item in evaluation_items:
             diagnosed_gaps = list(item.payload.get("diagnosed_gaps", []))
@@ -41,7 +32,7 @@ class AssessmentSynthesizer:
                 fact_items.append(
                     AssessmentFactItemRecord(
                         assessment_fact_item_id=f"afi-{item.evaluation_item_id}-{gap}",
-                        assessment_fact_batch_id=fact_batch.assessment_fact_batch_id,
+                        assessment_fact_batch_id=assessment_fact_batch_id,
                         source_evaluation_item_id=item.evaluation_item_id,
                         fact_type="gap",
                         topic_key=gap,
@@ -60,4 +51,14 @@ class AssessmentSynthesizer:
                         },
                     )
                 )
+        fact_batch = AssessmentFactBatchRecord(
+            assessment_fact_batch_id=assessment_fact_batch_id,
+            evaluation_batch_id=evaluation_batch.evaluation_batch_id,
+            workflow_run_id=workflow_run_id,
+            synthesized_by="assessment_synthesizer",
+            synthesizer_version=self.synthesizer_version,
+            status="completed",
+            synthesized_at=evaluation_batch.evaluated_at,
+            payload={"item_count": len(fact_items)},
+        )
         return fact_batch, fact_items

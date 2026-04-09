@@ -73,6 +73,56 @@ def test_assessment_synthesizer_emits_fact_batch_and_items() -> None:
     assert fact_items[0].source_evaluation_item_id == "ei-1"
     assert fact_items[0].fact_type == "gap"
     assert fact_items[0].topic_key == "proposal-execution-separation"
+    assert fact_batch.payload["item_count"] == 1
+
+
+def test_assessment_synthesizer_counts_multiple_gaps_as_multiple_fact_items() -> None:
+    synthesizer = AssessmentSynthesizer()
+    evaluation_batch = EvaluationBatchRecord(
+        evaluation_batch_id="eb-2",
+        answer_batch_id="ab-2",
+        workflow_run_id="run-2",
+        project_id="proj-1",
+        stage_id="stage-1",
+        evaluated_by="evaluator_agent",
+        evaluator_version="test-v1",
+        confidence=0.91,
+        status="completed",
+        evaluated_at="2026-04-09T12:30:00Z",
+        payload={"rubric_scores": {"understanding": "partial"}},
+    )
+    evaluation_item = EvaluationItemRecord(
+        evaluation_item_id="ei-2",
+        evaluation_batch_id="eb-2",
+        question_id="set-1-q-2",
+        answer_item_id="ai-2",
+        local_verdict="partial",
+        confidence=0.77,
+        status="completed",
+        evaluated_at="2026-04-09T12:30:00Z",
+        payload={
+            "reasoned_summary": "Two distinct gaps remain in the explanation.",
+            "diagnosed_gaps": [
+                "proposal-execution-separation",
+                "scope-boundary-separation",
+            ],
+            "dimension_refs": ["understanding", "causality"],
+        },
+    )
+
+    fact_batch, fact_items = synthesizer.synthesize(
+        workflow_run_id="run-2",
+        evaluation_batch=evaluation_batch,
+        evaluation_items=[evaluation_item],
+        evidence_spans=[],
+    )
+
+    assert len(fact_items) == 2
+    assert fact_batch.payload["item_count"] == 2
+    assert [item.topic_key for item in fact_items] == [
+        "proposal-execution-separation",
+        "scope-boundary-separation",
+    ]
 
 
 def test_checkpoint_records_round_trip_json() -> None:
