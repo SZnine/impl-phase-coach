@@ -81,14 +81,37 @@ export function KnowledgeGraphPage() {
               <p style={{ margin: 0, color: "#64748b" }}>No visible nodes for the current cluster.</p>
             ) : (
               <div style={{ display: "grid", gap: "1rem" }}>
+                <div style={overviewGridStyle}>
+                  <div style={overviewCardStyle}>
+                    <p style={subtleLabelStyle}>Visible nodes</p>
+                    <p style={overviewValueStyle}>{state.data.nodes.length}</p>
+                  </div>
+                  <div style={overviewCardStyle}>
+                    <p style={subtleLabelStyle}>Visible relations</p>
+                    <p style={overviewValueStyle}>{state.data.relations.length}</p>
+                  </div>
+                  <div style={overviewCardStyle}>
+                    <p style={subtleLabelStyle}>Relation types</p>
+                    <p style={overviewValueStyle}>{getRelationGroups(state.data).length}</p>
+                  </div>
+                </div>
+
                 <div style={previewColumnsStyle}>
-                  <div>
+                  <div style={centerNodePanelStyle}>
                     <p style={subtleLabelStyle}>Center node</p>
-                    <div style={nodePillStyle}>
-                      {state.data.selected_cluster
-                        ? getNodeLabel(state.data, state.data.selected_cluster.center_node_id)
-                        : state.data.nodes[0]?.label ?? "Unknown node"}
-                    </div>
+                    {getCenterNode(state.data) ? (
+                      <>
+                        <div style={nodePillStyle}>{getCenterNode(state.data)?.label}</div>
+                        <p style={{ margin: "0.75rem 0 0", color: "#1e293b", fontWeight: 600 }}>
+                          {getCenterNode(state.data)?.node_type} / {getCenterNode(state.data)?.abstract_level}
+                        </p>
+                        <p style={{ margin: "0.35rem 0 0", color: "#475569" }}>
+                          {getCenterNode(state.data)?.canonical_summary}
+                        </p>
+                      </>
+                    ) : (
+                      <div style={nodePillStyle}>Unknown node</div>
+                    )}
                   </div>
                   <div>
                     <p style={subtleLabelStyle}>Related nodes</p>
@@ -106,18 +129,46 @@ export function KnowledgeGraphPage() {
                   </div>
                 </div>
 
+                <div style={legendPanelStyle}>
+                  <p style={subtleLabelStyle}>Relation guide</p>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {getRelationGroups(state.data).length === 0 ? (
+                      <span style={emptyHintStyle}>No relation types visible in this cluster.</span>
+                    ) : (
+                      getRelationGroups(state.data).map(([relationType, relations]) => (
+                        <span key={relationType} style={legendBadgeStyle}>
+                          {formatRelationType(relationType)} ({relations.length})
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+
                 <div>
-                  <p style={subtleLabelStyle}>Connections</p>
+                  <p style={subtleLabelStyle}>Connections by type</p>
                   {state.data.relations.length === 0 ? (
                     <span style={emptyHintStyle}>No visible relations in this cluster.</span>
                   ) : (
                     <div style={{ display: "grid", gap: "0.5rem" }}>
-                      {state.data.relations.map((relation) => (
-                        <div key={relation.relation_id} style={relationRowStyle}>
-                          <span style={relationNodeStyle}>{getNodeLabel(state.data, relation.source_node_id)}</span>
-                          <span style={relationBadgeStyle}>{formatRelationType(relation.relation_type)}</span>
-                          <span style={relationNodeStyle}>{getNodeLabel(state.data, relation.target_node_id)}</span>
-                        </div>
+                      {getRelationGroups(state.data).map(([relationType, relations]) => (
+                        <section key={relationType} style={relationGroupStyle}>
+                          <h3 style={relationGroupHeadingStyle}>
+                            {formatRelationType(relationType)} ({relations.length})
+                          </h3>
+                          <div style={{ display: "grid", gap: "0.5rem" }}>
+                            {relations.map((relation) => (
+                              <div key={relation.relation_id} style={relationRowStyle}>
+                                <a href={`#node-${relation.source_node_id}`} style={relationLinkStyle}>
+                                  {getNodeLabel(state.data, relation.source_node_id)}
+                                </a>
+                                <span style={relationBadgeStyle}>{formatRelationType(relation.relation_type)}</span>
+                                <a href={`#node-${relation.target_node_id}`} style={relationLinkStyle}>
+                                  {getNodeLabel(state.data, relation.target_node_id)}
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
                       ))}
                     </div>
                   )}
@@ -133,7 +184,13 @@ export function KnowledgeGraphPage() {
             ) : (
               <div style={gridStyle}>
                 {state.data.nodes.map((node) => (
-                  <KnowledgeNodeCard key={node.node_id} node={node} />
+                  <div
+                    key={node.node_id}
+                    id={`node-${node.node_id}`}
+                    style={node.node_id === state.data.selected_cluster?.center_node_id ? centerCardShellStyle : undefined}
+                  >
+                    <KnowledgeNodeCard node={node} />
+                  </div>
                 ))}
               </div>
             )}
@@ -153,10 +210,39 @@ const panelStyle = {
 
 const sectionHeadingStyle = { margin: "0 0 0.75rem" } as const;
 const gridStyle = { display: "grid", gap: "0.75rem" } as const;
+const overviewGridStyle = {
+  display: "grid",
+  gap: "0.75rem",
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+} as const;
+const overviewCardStyle = {
+  border: "1px solid rgba(148, 163, 184, 0.3)",
+  borderRadius: "0.9rem",
+  background: "#f8fafc",
+  padding: "0.85rem",
+} as const;
+const overviewValueStyle = {
+  margin: 0,
+  color: "#0f172a",
+  fontSize: "1.4rem",
+  fontWeight: 800,
+} as const;
 const previewColumnsStyle = {
   display: "grid",
   gap: "1rem",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+} as const;
+const centerNodePanelStyle = {
+  borderRadius: "1rem",
+  background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+  border: "1px solid rgba(96, 165, 250, 0.35)",
+  padding: "1rem",
+} as const;
+const legendPanelStyle = {
+  borderRadius: "0.9rem",
+  background: "#fffbeb",
+  border: "1px solid rgba(245, 158, 11, 0.2)",
+  padding: "0.9rem",
 } as const;
 const subtleLabelStyle = {
   margin: "0 0 0.5rem",
@@ -185,6 +271,28 @@ const neighborPillStyle = {
   color: "#334155",
 } as const;
 const emptyHintStyle = { color: "#64748b", fontSize: "0.9rem" } as const;
+const legendBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0.3rem 0.65rem",
+  borderRadius: "999px",
+  background: "#fff7ed",
+  color: "#9a3412",
+  fontSize: "0.82rem",
+  fontWeight: 700,
+} as const;
+const relationGroupStyle = {
+  border: "1px solid rgba(148, 163, 184, 0.25)",
+  borderRadius: "0.9rem",
+  background: "#fff",
+  padding: "0.8rem",
+} as const;
+const relationGroupHeadingStyle = {
+  margin: "0 0 0.75rem",
+  color: "#0f172a",
+  fontSize: "0.95rem",
+} as const;
 const relationRowStyle = {
   display: "grid",
   gap: "0.75rem",
@@ -207,6 +315,23 @@ const relationNodeStyle = {
   color: "#0f172a",
   fontWeight: 600,
 } as const;
+const relationLinkStyle = {
+  color: "#0f172a",
+  fontWeight: 600,
+  textDecoration: "none",
+} as const;
+const centerCardShellStyle = {
+  borderRadius: "1rem",
+  boxShadow: "0 0 0 2px rgba(37, 99, 235, 0.12)",
+} as const;
+
+function getCenterNode(data: KnowledgeGraphMainViewDTO) {
+  const centerNodeId = data.selected_cluster?.center_node_id;
+  if (!centerNodeId) {
+    return data.nodes[0] ?? null;
+  }
+  return data.nodes.find((node) => node.node_id === centerNodeId) ?? null;
+}
 
 function getNeighborNodes(data: KnowledgeGraphMainViewDTO) {
   if (!data.selected_cluster) {
@@ -220,6 +345,22 @@ function getNodeLabel(data: KnowledgeGraphMainViewDTO, nodeId: string) {
   return data.nodes.find((node) => node.node_id === nodeId)?.label ?? nodeId;
 }
 
+function getRelationGroups(data: KnowledgeGraphMainViewDTO) {
+  const groups = new Map<string, KnowledgeGraphMainViewDTO["relations"]>();
+  for (const relation of data.relations) {
+    const existing = groups.get(relation.relation_type);
+    if (existing) {
+      existing.push(relation);
+    } else {
+      groups.set(relation.relation_type, [relation]);
+    }
+  }
+  return [...groups.entries()];
+}
+
 function formatRelationType(relationType: string) {
-  return relationType.replace(/_/g, " ");
+  return relationType
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

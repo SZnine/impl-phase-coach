@@ -6,8 +6,8 @@
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 最近已提交基线：`5303154 feat: derive support signals from structured assessments`
-- 当前工作区：干净，可直接从 `阶段 40 / support_signals 结构化派生最小实现` 之后继续推进
+- 最近已提交基线：`849a1f3 docs: freeze internal assessment support schema boundary`
+- 当前工作区：在 `849a1f3` 之上继续推进了 `阶段 46 / 主图轻增强`，尚未提交
 - 当前主线：
   1. 稳定性优先主线已经收出可用基线
   2. 当前更活跃的是 `知识地图 V1 主线`
@@ -192,6 +192,25 @@
 2. profile space 负责消费 signal 并投影关系
 3. 当前仍然禁止从自由文本直接推 `supports`
 
+### 阶段 46
+
+已完成主图轻增强：
+
+1. 中心节点层级更明确
+2. 主图新增：
+   - 可见节点计数
+   - 可见关系计数
+   - 关系类型计数
+3. 关系按类型分组展示
+4. 主图增加轻量 `Relation guide`
+5. 关系项可锚定到对应节点卡片
+
+当前这一步仍然主要属于前端表达层收口：
+
+1. 没有新增后端接口
+2. 没有改关系生成规则
+3. 没有引入拖拽、缩放或复杂布局
+
 ## 4. 当前仍然属于过渡态的部分
 
 这些现在是诚实可用，但还不是长期目标实现：
@@ -299,21 +318,23 @@
 
 ## 9. 当前下一步建议
 
-当前最合理的下一步不是扩更多页面，而是继续在知识地图主线上做“assessment client 契约收口”或“主图表达轻增强”。
+当前最合理的下一步不是扩更多页面，而是先把 `阶段 46 / 主图轻增强` 做文档同步和 checkpoint，再决定是继续主图轻交互增强，还是回到 assessment client 契约判断。
 
 推荐优先级：
 
 1. 先做文档/基线同步后的 checkpoint
 2. 再决定是否进入：
    - `support_signals` 是否正式进入 assessment client 契约
-   - 或主图轻增强
+   - 或主图进一步轻交互增强
 
 如果继续实现，我建议优先围绕：
 
-1. `support_signals` 是否正式进入 assessment client 契约
-2. assessment 结构化字段是否需要更稳定 schema
+1. `阶段 46 / 主图轻增强` 的文档同步与 checkpoint
+2. 然后再判断：
+   - `support_signals` 是否正式进入 assessment client 契约
+   - 或主图进一步轻交互增强
 
-而不是现在就扩复杂图交互。
+而不是现在就扩复杂图交互或新关系类型。
 
 ## 10. 新对话启动 prompt
 

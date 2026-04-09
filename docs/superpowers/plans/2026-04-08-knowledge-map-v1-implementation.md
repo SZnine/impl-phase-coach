@@ -752,6 +752,45 @@ After this task lands:
 
 ---
 
+### Task 11: Lightly Strengthen The Graph Main View
+
+**Files:**
+- Modify: `frontend/src/pages/KnowledgeGraphPage.tsx`
+- Test: `frontend/src/read-pages.test.tsx`
+
+- [ ] **Step 1: Strengthen center-node hierarchy**
+
+Make the selected cluster center node visually stronger than neighbor nodes.
+Do this without changing `KnowledgeNodeCard` ownership or introducing a new graph interaction state machine.
+
+- [ ] **Step 2: Add a lightweight relation overview**
+
+Expose at least:
+1. visible node count
+2. visible relation count
+3. visible relation-type count
+
+Keep this as a summary strip inside the existing graph main page.
+
+- [ ] **Step 3: Group visible relations by type**
+
+Render the current cluster relations grouped by `relation_type`, for example:
+1. `abstracts`
+2. `causes_mistake`
+3. `supports`
+
+This task improves graph readability only. It must not:
+1. change relation generation rules
+2. add new backend endpoints
+3. introduce drag/zoom/force-layout behavior
+
+- [ ] **Step 4: Make relations easier to trace back to node cards**
+
+Relation rows should more clearly point back to the related node cards in the current page scope.
+Keep this lightweight, for example via anchor links or stable in-page targeting.
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**

@@ -449,6 +449,9 @@ test("KnowledgeGraphPage renders graph main view instead of the legacy graph she
   expect(screen.getByText("Selected cluster")).toBeInTheDocument();
   expect(screen.getByText("Map preview")).toBeInTheDocument();
   expect(screen.getByText("State boundary hotspot")).toBeInTheDocument();
+  expect(screen.getByText("Visible nodes")).toBeInTheDocument();
+  expect(screen.getByText("Visible relations")).toBeInTheDocument();
+  expect(screen.getByText("Relation guide")).toBeInTheDocument();
   expect(screen.getAllByText("State and return value separation").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Boundary confusion").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Mastery: partial")).toHaveLength(2);
@@ -463,10 +466,12 @@ test("KnowledgeGraphPage renders loaded graph nodes and not a shell placeholder"
   expect(screen.getByText("State boundary hotspot")).toBeInTheDocument();
   expect(screen.getAllByText("State and return value separation").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Boundary confusion").length).toBeGreaterThanOrEqual(2);
-  expect(screen.getByText("Derived from partial assessment in stage-1.")).toBeInTheDocument();
+  expect(screen.getAllByText("Derived from partial assessment in stage-1.").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Evidence: 1")).toHaveLength(2);
-  expect(screen.getByText("Connections")).toBeInTheDocument();
-  expect(screen.getByText("causes mistake")).toBeInTheDocument();
+  expect(screen.getByText("Connections by type")).toBeInTheDocument();
+  expect(screen.getAllByText("Causes Mistake (1)").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getAllByRole("link", { name: "State and return value separation" })[0]).toHaveAttribute("href", "#node-node-1");
+  expect(screen.getAllByRole("link", { name: "Boundary confusion" })[0]).toHaveAttribute("href", "#node-node-2");
 });
 
 test("KnowledgeIndexPage renders loaded index entries and not a shell placeholder", async () => {
