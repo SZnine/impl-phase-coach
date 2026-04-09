@@ -1,0 +1,36 @@
+$ErrorActionPreference = "Stop"
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$demoDir = Join-Path $repoRoot ".workbench\demo"
+$dbPath = Join-Path $demoDir "review-workbench-demo.sqlite3"
+$sessionPath = Join-Path $demoDir "workspace-session-demo.json"
+
+Set-Location $repoRoot
+
+Write-Host "Seeding demo workspace..."
+& python scripts/seed_demo_data.py --db-path $dbPath --session-path $sessionPath
+
+$backendCommand = @"
+Set-Location '$repoRoot'
+\$env:REVIEW_WORKBENCH_DB_PATH = '$dbPath'
+\$env:REVIEW_WORKBENCH_SESSION_PATH = '$sessionPath'
+python -m uvicorn review_gate.http_api:app --host 127.0.0.1 --port 8000
+"@
+
+$frontendCommand = @"
+Set-Location '$repoRoot'
+npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
+"@
+
+Write-Host "Starting backend on http://127.0.0.1:8000 ..."
+Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCommand | Out-Null
+
+Write-Host "Starting frontend on http://127.0.0.1:5173 ..."
+Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendCommand | Out-Null
+
+Write-Host ""
+Write-Host "Demo URLs:"
+Write-Host "  Frontend: http://127.0.0.1:5173"
+Write-Host "  Backend:  http://127.0.0.1:8000"
+Write-Host "Demo DB:     $dbPath"
+Write-Host "Demo Session:$sessionPath"

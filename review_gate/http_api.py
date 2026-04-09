@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -15,10 +16,16 @@ from review_gate.workspace_state_store import JsonWorkspaceStateStore
 
 
 def _default_db_path() -> Path:
+    env_path = os.environ.get("REVIEW_WORKBENCH_DB_PATH", "").strip()
+    if env_path:
+        return Path(env_path)
     return Path(__file__).resolve().parent.parent / ".workbench" / "review-workbench.sqlite3"
 
 
 def _default_session_path(db_path: Path) -> Path:
+    env_path = os.environ.get("REVIEW_WORKBENCH_SESSION_PATH", "").strip()
+    if env_path:
+        return Path(env_path)
     return db_path.with_name("workspace-session.json")
 
 
@@ -35,8 +42,12 @@ def create_default_workspace_api(db_path: Path | None = None, session_path: Path
     )
 
 
-def create_app(api: WorkspaceAPI | None = None, db_path: Path | None = None) -> FastAPI:
-    workspace_api = api or create_default_workspace_api(db_path)
+def create_app(
+    api: WorkspaceAPI | None = None,
+    db_path: Path | None = None,
+    session_path: Path | None = None,
+) -> FastAPI:
+    workspace_api = api or create_default_workspace_api(db_path, session_path)
     app = FastAPI(title="Review Workbench API")
 
     @app.get("/api/workspace-session")

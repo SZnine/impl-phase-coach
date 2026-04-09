@@ -328,7 +328,7 @@ class WorkspaceAPI:
         elif focus_cluster_items:
             selected_cluster_item = focus_cluster_items[0]
 
-            selected_cluster = (
+        selected_cluster = (
             FocusClusterCardDTO(
                 cluster_id=selected_cluster_item["cluster_id"],
                 title=selected_cluster_item["title"],

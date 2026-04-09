@@ -437,6 +437,37 @@ def test_create_default_workspace_api_persists_stage_mastery_between_instances(t
     assert stage_view.knowledge_summary.latest_summary == "synced partial assessment with 1 knowledge entries and 1 mistakes"
 
 
+def test_create_default_workspace_api_uses_environment_demo_paths(tmp_path: Path, monkeypatch) -> None:
+    demo_dir = tmp_path / "demo"
+    db_path = demo_dir / "review-workbench-demo.sqlite3"
+    session_path = demo_dir / "workspace-session-demo.json"
+    monkeypatch.setenv("REVIEW_WORKBENCH_DB_PATH", str(db_path))
+    monkeypatch.setenv("REVIEW_WORKBENCH_SESSION_PATH", str(session_path))
+
+    api = create_default_workspace_api()
+    response = api.submit_answer_action(
+        SubmitAnswerRequest(
+            request_id="req-demo-env",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-09T00:00:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="This answer is long enough to avoid the weak fallback verdict.",
+            draft_id=None,
+        )
+    )
+
+    session = api.get_workspace_session()
+
+    assert response.success is True
+    assert session.workspace_session_id == "local-workspace-session"
+    assert db_path.exists()
+    assert session_path.exists()
+
+
 def test_http_api_round_trips_workspace_session_between_instances(tmp_path: Path) -> None:
     db_path = tmp_path / "workbench.sqlite3"
     writer = TestClient(create_app(db_path=db_path))

@@ -6,323 +6,195 @@
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 最近已提交基线：`82da617 docs: add assessment support contract adoption gate`
-- 当前工作区：在 `82da617` 之上继续推进了 `阶段 53 / 主图轻交互增强`，尚未提交
-- 当前主线：
-  1. 稳定性优先主线已经收出可用基线
-  2. 当前更活跃的是 `知识地图 V1 主线`
+- 最近已提交基线：`157e738 feat: add lightweight graph focus interactions`
+- 当前工作区：在 `157e738` 之上继续推进了 `阶段 59 / 一键式本地演示入口最小实现`，尚未提交
+- 当前更活跃的主线：`知识地图 V1`
 
-## 2. 当前知识地图主线结论
+## 2. 当前主线结论
 
-当前已经不是“有没有知识图页”的问题，而是“知识地图是否已经成为真实资产入口”的问题。
+当前已经不是“有没有知识地图页”的问题，而是“知识地图是否已经成为真实可走通、可演示、可验证的工作台入口”的问题。
 
 当前已冻结的核心判断：
-
-1. 这是一个以知识地图为核心索引层的个人工作台，不是一个附属图页。
-2. 节点是混合节点，`foundation` 必须是一等节点。
-3. 节点本体和用户状态必须分开：
+1. 这是一个以知识地图为核心索引层的个人工作台，不是附属图页。
+2. 节点本体与用户状态分离：
    - `KnowledgeNode`
    - `UserNodeState`
-4. 证据锚点默认不进主图，而作为附属证据层按需展开。
-5. 知识地图入口是：
+3. 证据锚点默认不进主图，而作为附属证据层按需展开。
+4. 知识地图入口是：
    - `/knowledge` 摘要页
    - `/knowledge/graph` 主图页
-6. 默认主图围绕 `FocusCluster` 展开，不围绕单个节点或全量图展开。
-7. explanation 链已经拆成：
-   - cache 宿主
-   - 可替换 generator
+5. explanation 链已拆成：
+   - `FocusExplanation` cache 宿主
+   - 可替换 `generator`
    - 页面只读 cache，不读实时 LLM
+6. `support_signals` 当前属于 `ReviewFlowService` 内部稳定 assessment schema，不是外部正式 client 契约。
 
-## 3. 已完成的知识地图 V1 范围
+## 3. 已完成能力
 
-### Task 1
+### 核心对象与宿主
 
-已完成核心对象与 SQLite 宿主：
-
+已完成：
 1. `KnowledgeNode`
 2. `EvidenceRef`
 3. `UserNodeState`
 4. `KnowledgeRelation`
 5. `FocusCluster`
+6. `FocusExplanation`
 
 关键文件：
-
 - `review_gate/domain.py`
 - `review_gate/storage_sqlite.py`
-- `tests/test_workbench_storage.py`
 
-### Task 2
+### assessment -> durable projection
 
-已完成 `assessment -> durable knowledge objects` 的最小投影：
-
-1. `KnowledgeNode`
-2. `EvidenceRef`
-3. `UserNodeState`
-
-关键文件：
-
-- `review_gate/profile_space_service.py`
-- `tests/test_profile_space_service.py`
-
-### Task 3
-
-已完成知识地图后端最小读面：
-
-1. `GET /api/knowledge`
-2. `GET /api/knowledge/graph-main`
-
-关键文件：
-
-- `review_gate/view_dtos.py`
-- `review_gate/workspace_api.py`
-- `review_gate/http_api.py`
-- `tests/test_workspace_api.py`
-- `tests/test_http_api.py`
-
-### Task 4
-
-已完成知识地图前端最小入口：
-
-1. `/knowledge` 作为摘要页入口
-2. `/knowledge/graph` 作为主图页入口
-3. `KnowledgeNodeCard` 作为节点最小详情宿主
-
-关键文件：
-
-- `frontend/src/pages/KnowledgeMapPage.tsx`
-- `frontend/src/pages/KnowledgeGraphPage.tsx`
-- `frontend/src/components/KnowledgeNodeCard.tsx`
-- `frontend/src/lib/api.ts`
-- `frontend/src/routes.tsx`
-- `frontend/src/components/WorkbenchLayout.tsx`
-
-### Task 5
-
-已完成知识地图 V1 的 scope lock 与 regression 收口：
-
-1. 锁定 `/api/knowledge` 不退化成证据堆
-2. 锁定 `/api/knowledge/graph-main` 不把 evidence 当主图节点
-3. handoff 首次同步到知识地图 V1
-
-### Task 6
-
-已完成最小关系生成与 `FocusCluster` 稳定化：
-
-1. 只生成：
-   - `abstracts`
-   - `causes_mistake`
-2. `FocusCluster` 从 assessment 粒度收成热点粒度
-3. cluster id 基于 `project + stage + hotspot slug` 稳定生成
-4. 重复 assessment 会复用已有 cluster，而不是每次新建
-
-### Task 7
-
-已完成 `FocusExplanation` cache：
-
-1. 新对象：`FocusExplanation`
-2. explanation cache 有独立 SQLite 宿主
-3. `workspace_api` 已采用：
-   - `cache first`
-   - `fallback second`
-
-### 阶段 27
-
-已完成主图最小关系可视化闭环：
-
-1. 主图能看到中心节点
-2. 主图能看到邻居节点
-3. 主图能看到连接关系和关系标签
-
-当前仍是片区表达，不是真正拓扑布局。
-
-### 阶段 28
-
-已完成 `FocusCluster` 排序与摘要入口可读性收口：
-
-1. 焦点簇顺序不再按写入顺序漂
-2. 摘要页已有 `Why it matters`
-3. reason codes 已进入可读 badge
-
-### 阶段 32
-
-已完成 explanation generator 策略层拆分：
-
-1. 新文件：`review_gate/explanation_generators.py`
-2. 新协议：`FocusExplanationGenerator`
-3. 默认实现：`DeterministicFocusExplanationGenerator`
-4. `ProfileSpaceService` 已支持通过 generator 注入 explanation 生成策略
-
-### 阶段 36
-
-已完成 `supports` 的最小高置信扩展：
-
-1. 只在显式 `support_signals` 存在时生成 `supports`
-2. 当前只允许三类高置信关系：
-   - `foundation -> concept`
-   - `foundation -> method`
-   - `concept -> decision`
-3. 单纯共现不会生成 `supports`
-4. 重复 assessment 会复用稳定 `supports` relation id，不会重复刷边
-
-### 阶段 40
-
-已完成 `support_signals` 的结构化派生最小实现：
-
-1. `AssessmentFact` 新增：
-   - `dimension_hits`
-   - `support_basis_tags`
-   - `support_signals`
-2. `ReviewFlowService.submit_answer(...)` 已在 assessment 产出时派生：
-   - `dimension_hits`
-   - `support_signals`
-3. `ProfileSpaceService` 继续只消费结构化 `support_signals`
-4. `WorkspaceAPI submit_answer` 主链已经可以把派生后的 `supports` 投影进知识地图
-
-### 阶段 46
-
-已完成主图轻增强：
-
-1. 中心节点层级更明确
-2. 主图新增：
-   - 可见节点计数
-   - 可见关系计数
-   - 关系类型计数
-3. 关系按类型分组展示
-4. 主图增加轻量 `Relation guide`
-5. 关系项可锚定到对应节点卡片
-
-### 阶段 53
-
-已完成主图轻交互增强：
-
-1. 当前 cluster 内新增关系类型筛选：
-   - `All`
-   - `Abstracts`
-   - `Causes Mistake`
-   - `Supports`
-2. 点击关系可高亮对应 source / target 节点
-3. 点击节点可高亮相关关系
-4. 仍然只在当前 cluster 范围内工作，不新增后端接口
-
-## 4. 当前仍然属于过渡态的部分
-
-这些现在是诚实可用，但还不是长期目标实现：
-
-1. `KnowledgeGraphPage` 仍然是片区式关系表达，不是真正拓扑布局
-2. `KnowledgeRelation` 目前只生成最小关系：
+已完成：
+1. `assessment -> KnowledgeNode / EvidenceRef / UserNodeState`
+2. 最小关系：
    - `abstracts`
    - `causes_mistake`
    - 高置信 `supports`
-3. `FocusCluster` 仍是用户侧最小对象，不是全局候选簇系统
-4. explanation 仍由 deterministic generator 生成，不是异步预生成 LLM explanation
-5. proposal 还没升级成正式知识网络治理中心
+3. `FocusCluster` 最小稳定化
+4. `FocusExplanation` cache-first 读取链
+
+关键文件：
+- `review_gate/review_flow_service.py`
+- `review_gate/profile_space_service.py`
+- `review_gate/workspace_api.py`
+- `review_gate/http_api.py`
+
+### 前后端读面
+
+已完成：
+1. `GET /api/knowledge`
+2. `GET /api/knowledge/graph-main`
+3. `/knowledge` 摘要页
+4. `/knowledge/graph` 主图页
+5. 主图轻增强：
+   - 中心节点强化
+   - 关系分组
+   - 图例与计数
+6. 主图轻交互增强：
+   - 关系类型筛选
+   - 节点/关系互相高亮
+
+关键文件：
+- `frontend/src/pages/KnowledgeMapPage.tsx`
+- `frontend/src/pages/KnowledgeGraphPage.tsx`
+- `frontend/src/components/KnowledgeNodeCard.tsx`
+
+### 阶段 59：一键式本地演示入口
+
+已完成：
+1. `http_api` 支持 demo 路径环境变量覆写：
+   - `REVIEW_WORKBENCH_DB_PATH`
+   - `REVIEW_WORKBENCH_SESSION_PATH`
+2. `scripts/seed_demo_data.py`
+   - 创建独立 demo sqlite
+   - 创建独立 demo session
+   - 走真实 `submit_answer_action` 主链种数据
+   - 额外补一个 `supports` showcase cluster，方便真实外显当前进度
+3. `scripts/start-demo.ps1`
+   - 先 seed demo 数据
+   - 再启动后端
+   - 再启动前端
+4. 顺手修复了现有读面缺口：
+   - `WorkspaceAPI.get_knowledge_graph_main_view(...)` 在显式传 `cluster_id` 时 `selected_cluster` 未初始化
+
+关键文件：
+- `review_gate/http_api.py`
+- `review_gate/workspace_api.py`
+- `scripts/seed_demo_data.py`
+- `scripts/start-demo.ps1`
+- `tests/test_http_api.py`
+- `tests/test_demo_seed.py`
+
+## 4. 当前仍属过渡态的部分
+
+这些现在可用，但还不是长期目标实现：
+1. `KnowledgeGraphPage` 仍然是片区式关系表达，不是真正拓扑布局。
+2. explanation 仍由 deterministic generator 生成，不是异步预生成 LLM explanation。
+3. `supports` 当前仍以高置信 deterministic 规则为主，不做自由文本推断。
+4. `support_signals` 虽然已经进入真实主链，但当前仍只冻结为服务内 schema，不对外承诺。
+5. demo 能力目前是“一键脚本 + demo seed + 独立 DB”，不是完整 demo mode。
 
 ## 5. 当前最重要的边界
 
-后续接手时最容易混淆的是下面几组边界：
-
+后续最容易混的是下面几组：
 1. `KnowledgeNode` vs `UserNodeState`
    - 前者是知识本体
    - 后者是当前用户与该节点的关系状态
 2. `FocusCluster` vs `FocusExplanation`
    - 前者回答“当前哪个片区值得看”
    - 后者回答“为什么它现在重要”
-3. `Explanation cache` vs `Explanation generator`
+3. explanation cache vs explanation generator
    - 前者是结果宿主
    - 后者是策略实现
-4. `deterministic default strategy` vs `future LLM/agent strategy`
-   - 当前用前者
-   - 但不把策略点写死
+4. 内部 assessment schema vs 外部 assessment client 契约
+   - 当前 `dimension_hits / support_basis_tags / support_signals` 只属于前者
+5. demo 入口层 vs 业务主链
+   - demo 脚本和 demo seed 只是运行辅助层
+   - 不应该反向污染知识地图业务真相
 
-## 6. 当前 agent / LLM 接入原则
+## 6. agent / LLM 接入原则
 
-当前已冻结的原则：
-
-1. 当前先用 deterministic default strategy 落地
-2. 高语义推断点要集中成可替换策略接缝
-3. 不因为当前阶段，就把未来需要灵活替换的策略硬写死
-4. 也不因为未来可能接模型，就提前把当前实现过度复杂化
+当前冻结原则：
+1. 当前先用 deterministic default strategy 落地。
+2. 高语义推断点要集中成可替换策略接缝。
+3. 不因为当前阶段，就把未来需要灵活替换的策略硬写死。
+4. 也不因为未来可能接模型，就把当前实现过度复杂化。
 
 一句话原则：
 
 `硬定事实，不硬定策略。`
 
-也就是：
+## 7. assessment support schema 当前约束
 
-1. 硬定：
-   - 对象
-   - store
-   - DTO
-   - 审计边界
-   - 证据锚点
-2. 留活：
-   - explanation generator
-   - relation inference
-   - focus scoring
-   - 去重/重构建议
-
-## 7. 当前验证状态
-
-最近一轮和阶段 53 直接相关的验证结果：
-
-1. `npm --prefix frontend test -- src/read-pages.test.tsx -t "filters visible relations by type|highlights related nodes when a relation is focused|highlights related relations when a node is focused"` -> `3 passed`
-2. `npm --prefix frontend test -- src/read-pages.test.tsx` -> `18 passed`
-3. `npm --prefix frontend run build` -> `passed`
-
-当前已知非阻塞项：
-
-1. `datetime.utcnow()` deprecation warning
-2. React Router v7 future flag warning
-3. `App.test.tsx` 里的 `act(...)` warning
-
-## 8. assessment support schema 当前约束
-
-当前已经可以明确冻结的是：
-
+当前已内部稳定的字段：
 1. `dimension_hits`
 2. `support_basis_tags`
 3. `support_signals`
 
-这三类字段当前属于 `ReviewFlowService` 内部 assessment schema 的稳定扩展字段。
-
-当前还没有冻结的是：
-
-1. 它们是否作为对外 assessment client 的正式契约字段
-2. 这些字段是否需要被前端或外部调用方直接依赖
-
-当前工程约束应理解为：
-
+当前工程约束：
 1. 服务内：稳定
 2. 对外 client：未冻结
 
-这轮再次判断后的结论仍然是：
-
-1. 现在不建议把 `dimension_hits / support_basis_tags / support_signals` 升成正式 assessment client 契约
+当前再判断后的结论仍然是：
+1. 现在不建议把这三类字段升级成正式 assessment client 契约。
 2. 只有至少满足下面 `2/3`，才值得重新评估外放：
    - 连续两轮以上没有再改字段形状
    - `basis_type / basis_key` 不再摇摆
    - 至少一个真实外部调用方需要直接消费
 
+## 8. 最近验证结果
+
+和阶段 59 直接相关的最近验证：
+
+1. `python -m pytest tests/test_http_api.py::test_create_default_workspace_api_uses_environment_demo_paths tests/test_demo_seed.py -q` -> `2 passed`
+2. `python -m pytest tests/test_http_api.py tests/test_demo_seed.py tests/test_workspace_api.py -q` -> `42 passed`
+
+当前已知非阻塞项：
+1. `datetime.utcnow()` deprecation warning
+2. React Router v7 future flag warning
+3. `App.test.tsx` 里的 `act(...)` warning
+4. pytest 结束时偶发 Windows 临时目录清理 `PermissionError`，但测试本身通过
+
 ## 9. 当前下一步建议
 
-当前最合理的下一步不是立刻外放 assessment support 字段，而是继续维持“服务内稳定、对外未冻结”，只在外放门槛满足时再重新评估。
+当前最合理的下一步不是继续扩新功能，而是先把 demo 入口这一轮收口：
+1. 同步实施计划与 handoff
+2. 做一次 git checkpoint
 
-推荐优先级：
-
-1. 当前继续不外放 assessment support 字段
-2. 然后再判断：
-   - 主图是否还值得再做一小步轻交互增强
-   - 或 support schema 是否已经满足外放门槛
+如果继续功能推进，再优先判断：
+1. 主图是否还值得再做一小步轻交互增强
+2. 或 assessment support 字段是否已经满足外放门槛
 
 ## 10. 新对话启动 prompt
 
 当前基线：
-
-- 最近已提交基线：`82da617 docs: add assessment support contract adoption gate`
-- 当前工作区：包含 `阶段 53 / 主图轻交互增强` 的未提交前端改动
+- 最近已提交基线：`157e738 feat: add lightweight graph focus interactions`
+- 当前工作区：包含 `阶段 59 / 一键式本地演示入口最小实现` 的未提交改动
 
 请按 impl-phase-coach 方式继续：
-
 1. 先判断当前阶段
 2. 先给出当前阶段目标 / 产物 / 退出条件
 3. 不跨阶段
@@ -330,11 +202,9 @@
    - A. 我自己补充
    - B. 你直接补充
 
-当前最重要的边界：
-
+当前最相关的边界：
 - `KnowledgeNode` vs `UserNodeState`
 - `FocusCluster` vs `FocusExplanation`
 - explanation cache vs explanation generator
-- deterministic default strategy vs future LLM/agent strategy
-
-当前重点不是扩新页面，而是继续知识地图主线的策略层与价值表达收口。
+- 内部 assessment schema vs 外部 assessment client 契约
+- demo 运行层 vs 知识地图业务主链

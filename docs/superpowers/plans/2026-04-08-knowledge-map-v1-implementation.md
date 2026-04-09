@@ -841,6 +841,69 @@ Expected:
 
 ---
 
+### Task 13: Add A One-Click Local Demo Entry With Isolated Seed Data
+
+**Files:**
+- Modify: `review_gate/http_api.py`
+- Modify: `review_gate/workspace_api.py`
+- Add: `scripts/seed_demo_data.py`
+- Add: `scripts/start-demo.ps1`
+- Test: `tests/test_http_api.py`
+- Test: `tests/test_demo_seed.py`
+
+- [ ] **Step 1: Add isolated demo path overrides**
+
+Allow the default app factory path resolution to be overridden by environment variables:
+1. `REVIEW_WORKBENCH_DB_PATH`
+2. `REVIEW_WORKBENCH_SESSION_PATH`
+
+Keep explicit function arguments higher priority than environment variables.
+
+- [ ] **Step 2: Seed a real demo workspace through the existing mainline**
+
+Create `scripts/seed_demo_data.py` that:
+1. resets an isolated demo sqlite and demo session path
+2. uses `create_default_workspace_api(db_path=..., session_path=...)`
+3. drives real `submit_answer_action(...)` calls
+4. ensures the demo output includes:
+   - summary view data
+   - graph-main data
+   - at least one visible `supports` relation
+
+This seed must stay on the real business path. Do not build fake demo-only API payloads.
+
+- [ ] **Step 3: Add a PowerShell one-click launcher**
+
+Create `scripts/start-demo.ps1` that:
+1. seeds demo data first
+2. starts the backend with the isolated demo DB/session env vars
+3. starts the frontend dev server
+4. prints the frontend/backend URLs plus the demo DB/session paths
+
+This task is intentionally PowerShell-first. Do not expand it into a full cross-platform demo mode in this step.
+
+- [ ] **Step 4: Keep the demo layer isolated from the product layer**
+
+This task must not:
+1. introduce demo-only backend endpoints
+2. write into the default `.workbench/review-workbench.sqlite3`
+3. rework knowledge-map business logic just for demo convenience
+
+If demo visibility needs a better default landing area, prefer a narrow demo-seed enhancement over changing core product rules.
+
+- [ ] **Step 5: Re-run the focused demo verification**
+
+Run:
+1. `python -m pytest tests/test_http_api.py::test_create_default_workspace_api_uses_environment_demo_paths tests/test_demo_seed.py -q`
+2. `python -m pytest tests/test_http_api.py tests/test_demo_seed.py tests/test_workspace_api.py -q`
+
+Expected:
+1. demo path override works
+2. demo seed creates visible summary + graph data
+3. at least one `supports` relation is visible in the demo graph
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**
