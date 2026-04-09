@@ -1,37 +1,37 @@
 # impl-phase-coach 当前状态接手文档
 
-用途：给后续对话或后续阶段快速接手当前工作，不依赖完整历史对话。
+用途：给后续对话或下一阶段实现快速接手当前工作，不依赖完整历史对话。
 
 ## 1. 当前基线
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 最近已提交基线：`849a1f3 docs: freeze internal assessment support schema boundary`
-- 当前工作区：在 `849a1f3` 之上继续推进了 `阶段 46 / 主图轻增强`，尚未提交
+- 最近已提交基线：`82da617 docs: add assessment support contract adoption gate`
+- 当前工作区：在 `82da617` 之上继续推进了 `阶段 53 / 主图轻交互增强`，尚未提交
 - 当前主线：
   1. 稳定性优先主线已经收出可用基线
   2. 当前更活跃的是 `知识地图 V1 主线`
 
 ## 2. 当前知识地图主线结论
 
-当前已经不是“有没有知识图页面”的问题，而是“知识地图是否已成为真实资产入口”的问题。
+当前已经不是“有没有知识图页”的问题，而是“知识地图是否已经成为真实资产入口”的问题。
 
-已经冻结的核心判断：
+当前已冻结的核心判断：
 
-1. 这是一个以知识地图为核心索引层的个人工作台，不是一个附属图页
-2. 节点是混合节点，且 `foundation` 必须是一等节点
+1. 这是一个以知识地图为核心索引层的个人工作台，不是一个附属图页。
+2. 节点是混合节点，`foundation` 必须是一等节点。
 3. 节点本体和用户状态必须分开：
    - `KnowledgeNode`
    - `UserNodeState`
-4. 证据锚点默认不进入主图，而作为附属证据层按需展开
+4. 证据锚点默认不进主图，而作为附属证据层按需展开。
 5. 知识地图入口是：
    - `/knowledge` 摘要页
    - `/knowledge/graph` 主图页
-6. 默认主图围绕 `FocusCluster` 展开，而不是围绕单个节点或全量图展开
-7. 当前 explanation 链已经明确：
-   - 先有 cache 宿主
-   - 再有可替换 generator
-   - 当前不接实时 LLM
+6. 默认主图围绕 `FocusCluster` 展开，不围绕单个节点或全量图展开。
+7. explanation 链已经拆成：
+   - cache 宿主
+   - 可替换 generator
+   - 页面只读 cache，不读实时 LLM
 
 ## 3. 已完成的知识地图 V1 范围
 
@@ -152,12 +152,6 @@
 3. 默认实现：`DeterministicFocusExplanationGenerator`
 4. `ProfileSpaceService` 已支持通过 generator 注入 explanation 生成策略
 
-这意味着 explanation 现在已经明确分成三层：
-
-1. `FocusExplanation`：缓存宿主
-2. `ExplanationGenerator`：生成策略
-3. `workspace_api`：只读 cache，不参与生成
-
 ### 阶段 36
 
 已完成 `supports` 的最小高置信扩展：
@@ -169,8 +163,6 @@
    - `concept -> decision`
 3. 单纯共现不会生成 `supports`
 4. 重复 assessment 会复用稳定 `supports` relation id，不会重复刷边
-
-当前这一步仍然是 deterministic default strategy，不接 LLM/agent 做关系推断。
 
 ### 阶段 40
 
@@ -186,12 +178,6 @@
 3. `ProfileSpaceService` 继续只消费结构化 `support_signals`
 4. `WorkspaceAPI submit_answer` 主链已经可以把派生后的 `supports` 投影进知识地图
 
-当前最关键的边界是：
-
-1. assessment 负责产出结构化 signal
-2. profile space 负责消费 signal 并投影关系
-3. 当前仍然禁止从自由文本直接推 `supports`
-
 ### 阶段 46
 
 已完成主图轻增强：
@@ -205,11 +191,18 @@
 4. 主图增加轻量 `Relation guide`
 5. 关系项可锚定到对应节点卡片
 
-当前这一步仍然主要属于前端表达层收口：
+### 阶段 53
 
-1. 没有新增后端接口
-2. 没有改关系生成规则
-3. 没有引入拖拽、缩放或复杂布局
+已完成主图轻交互增强：
+
+1. 当前 cluster 内新增关系类型筛选：
+   - `All`
+   - `Abstracts`
+   - `Causes Mistake`
+   - `Supports`
+2. 点击关系可高亮对应 source / target 节点
+3. 点击节点可高亮相关关系
+4. 仍然只在当前 cluster 范围内工作，不新增后端接口
 
 ## 4. 当前仍然属于过渡态的部分
 
@@ -219,9 +212,10 @@
 2. `KnowledgeRelation` 目前只生成最小关系：
    - `abstracts`
    - `causes_mistake`
+   - 高置信 `supports`
 3. `FocusCluster` 仍是用户侧最小对象，不是全局候选簇系统
 4. explanation 仍由 deterministic generator 生成，不是异步预生成 LLM explanation
-5. proposal 还没有正式升级成“知识网络治理中心”
+5. proposal 还没升级成正式知识网络治理中心
 
 ## 5. 当前最重要的边界
 
@@ -230,27 +224,24 @@
 1. `KnowledgeNode` vs `UserNodeState`
    - 前者是知识本体
    - 后者是当前用户与该节点的关系状态
-
 2. `FocusCluster` vs `FocusExplanation`
    - 前者回答“当前哪个片区值得看”
    - 后者回答“为什么它现在重要”
-
 3. `Explanation cache` vs `Explanation generator`
    - 前者是结果宿主
    - 后者是策略实现
-
 4. `deterministic default strategy` vs `future LLM/agent strategy`
    - 当前用前者
    - 但不把策略点写死
 
 ## 6. 当前 agent / LLM 接入原则
 
-当前已经冻结的原则：
+当前已冻结的原则：
 
 1. 当前先用 deterministic default strategy 落地
 2. 高语义推断点要集中成可替换策略接缝
-3. 不因为当前阶段就把未来需要灵活替换的策略硬写死
-4. 但也不因为未来可能接模型，就提前把当前实现过度复杂化
+3. 不因为当前阶段，就把未来需要灵活替换的策略硬写死
+4. 也不因为未来可能接模型，就提前把当前实现过度复杂化
 
 一句话原则：
 
@@ -270,19 +261,13 @@
    - focus scoring
    - 去重/重构建议
 
-如果后续出现下面这些情况，就值得显式考虑接入真实 agent / LLM：
-
-1. relation inference 的规则复杂度明显失控
-2. FocusCluster 聚合评分开始依赖高语义判断
-3. explanation 文案 deterministic 方案开始明显脆弱
-4. 节点合并 / 重命名 / 升降层建议开始进入高价值阶段
-
 ## 7. 当前验证状态
 
-最近一轮和阶段 40 直接相关的验证结果：
+最近一轮和阶段 53 直接相关的验证结果：
 
-1. `python -m pytest tests/test_review_flow_service.py::test_submit_answer_derives_support_signals_from_support_basis_tags tests/test_review_flow_service.py::test_submit_answer_derives_support_signals_from_dimension_hits_and_core_gaps tests/test_workspace_api.py::test_submit_answer_action_projects_derived_support_signals_into_supports_relations tests/test_workbench_storage.py::test_sqlite_store_round_trips_durable_facts -q` -> `4 passed`
-2. `python -m pytest tests/test_review_flow_service.py tests/test_workspace_api.py tests/test_workbench_storage.py -q` -> `38 passed`
+1. `npm --prefix frontend test -- src/read-pages.test.tsx -t "filters visible relations by type|highlights related nodes when a relation is focused|highlights related relations when a node is focused"` -> `3 passed`
+2. `npm --prefix frontend test -- src/read-pages.test.tsx` -> `18 passed`
+3. `npm --prefix frontend run build` -> `passed`
 
 当前已知非阻塞项：
 
@@ -307,71 +292,41 @@
 
 当前工程约束应理解为：
 
-1. 服务内：`稳定`
-2. 外部 client 契约：`未冻结`
-
-因此后续如果继续推进，默认应：
-
-1. 继续让 `ProfileSpaceService` 只消费这些结构化字段
-2. 不把它们立刻扩写成前端/外部 client 的硬依赖
-3. 等字段形状至少稳定两轮后，再决定是否升级成正式外部契约
-
-当前额外冻结的外放门槛是：
-
-1. 当前不将 `dimension_hits`、`support_basis_tags`、`support_signals` 升级成正式 assessment client 契约
-2. 只有满足下面至少 2 条，才值得重新评估外放：
-   - 这三类字段连续两轮以上没有再改形状
-   - `basis_type / basis_key` 已稳定，不再继续摇摆
-   - 至少一个外部调用方真的需要直接消费这些字段
-3. 在门槛满足前，前端和外部 client 不应把它们当成长期稳定 contract
+1. 服务内：稳定
+2. 对外 client：未冻结
 
 ## 9. 当前下一步建议
 
-当前最合理的下一步不是扩更多页面，而是先把 `阶段 46 / 主图轻增强` 做文档同步和 checkpoint，再决定是继续主图轻交互增强，还是回到 assessment client 契约判断。
+当前最合理的下一步不是扩更多页面，而是先把 `阶段 53 / 主图轻交互增强` 做文档同步和 checkpoint，再决定是继续主图轻交互增强，还是回到 assessment client 契约判断。
 
 推荐优先级：
 
 1. 先做文档/基线同步后的 checkpoint
-2. 再决定是否进入：
-   - `support_signals` 是否正式进入 assessment client 契约
-   - 或主图进一步轻交互增强
-
-如果继续实现，我建议优先围绕：
-
-1. `阶段 46 / 主图轻增强` 的文档同步与 checkpoint
 2. 然后再判断：
    - `support_signals` 是否正式进入 assessment client 契约
-   - 或主图进一步轻交互增强
-
-而不是现在就扩复杂图交互或新关系类型。
+   - 或主图是否还值得再做一小步轻交互增强
 
 ## 10. 新对话启动 prompt
 
-如果要在新对话里继续，可以直接给出下面这段：
-
-```text
-请先阅读：
-1. docs/superpowers/handoffs/2026-04-08-current-state-handoff.md
-2. docs/superpowers/plans/2026-04-08-knowledge-map-core-model.md
-3. docs/superpowers/plans/2026-04-08-knowledge-map-v1-implementation.md
-
 当前基线：
-- 最近已提交基线：5303154 feat: derive support signals from structured assessments
-- 当前工作区当前为干净基线，可直接继续推进下一阶段
+
+- 最近已提交基线：`82da617 docs: add assessment support contract adoption gate`
+- 当前工作区：包含 `阶段 53 / 主图轻交互增强` 的未提交前端改动
 
 请按 impl-phase-coach 方式继续：
+
 1. 先判断当前阶段
-2. 先给出当前阶段目标/产物/退出条件
+2. 先给出当前阶段目标 / 产物 / 退出条件
 3. 不跨阶段
 4. 默认提供：
-   A. 我自己补充
-   B. 你直接补充
+   - A. 我自己补充
+   - B. 你直接补充
 
 当前最重要的边界：
-- KnowledgeNode vs UserNodeState
-- FocusCluster vs FocusExplanation
+
+- `KnowledgeNode` vs `UserNodeState`
+- `FocusCluster` vs `FocusExplanation`
 - explanation cache vs explanation generator
 - deterministic default strategy vs future LLM/agent strategy
 
 当前重点不是扩新页面，而是继续知识地图主线的策略层与价值表达收口。
-```

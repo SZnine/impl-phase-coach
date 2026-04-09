@@ -798,6 +798,49 @@ Keep this lightweight, for example via anchor links or stable in-page targeting.
 
 ---
 
+### Task 12: Add Lightweight Cluster-Local Graph Interactions
+
+**Files:**
+- Modify: `frontend/src/pages/KnowledgeGraphPage.tsx`
+- Test: `frontend/src/read-pages.test.tsx`
+
+- [ ] **Step 1: Add relation-type filtering inside the current cluster**
+
+Support a minimal filter set driven by the visible relation groups:
+1. `All`
+2. `Abstracts`
+3. `Causes Mistake`
+4. `Supports`
+
+This filter is view-local. It must not:
+1. change relation generation rules
+2. add new backend endpoints
+3. persist new workspace session state
+
+- [ ] **Step 2: Add relation-to-node highlight**
+
+When a relation row is focused, highlight its source and target nodes inside the current page scope.
+Keep the interaction local to the current graph page; do not add a global graph state machine.
+
+- [ ] **Step 3: Add node-to-relation highlight**
+
+When a node is focused, highlight the visible relations connected to that node.
+This is a readability enhancement, not a graph editing feature.
+
+- [ ] **Step 4: Re-run the focused frontend tests**
+
+Run:
+1. `npm --prefix frontend test -- src/read-pages.test.tsx -t "filters visible relations by type|highlights related nodes when a relation is focused|highlights related relations when a node is focused"`
+2. `npm --prefix frontend test -- src/read-pages.test.tsx`
+3. `npm --prefix frontend run build`
+
+Expected:
+1. the three new interaction tests pass
+2. the full read-pages suite remains green
+3. production build still passes
+
+---
+
 ## Self-Review
 
 **1. Spec coverage:**
@@ -812,6 +855,7 @@ Keep this lightweight, for example via anchor links or stable in-page targeting.
 - Separates explanation cache hosting from explanation generation strategy without introducing realtime LLM dependency.
 - Adds a minimal high-confidence `supports` slice without expanding into broad semantic relation inference.
 - Keeps the next `support_signals` step constrained to structured assessment derivation rather than free-text inference.
+- Adds a cluster-local lightweight interaction slice without turning the graph page into a drag/zoom graph tool.
 
 **2. Placeholder scan:**
 - No `TODO` / `TBD` placeholders remain.

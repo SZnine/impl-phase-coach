@@ -208,6 +208,43 @@ const knowledgeGraphMainView: KnowledgeGraphMainViewDTO = {
   ],
 };
 
+const knowledgeGraphMainViewWithSupports: KnowledgeGraphMainViewDTO = {
+  selected_cluster: {
+    ...focusClusterCard,
+    neighbor_node_ids: ["node-2", "node-3"],
+  },
+  nodes: [
+    knowledgeGraphMainNode,
+    knowledgeGraphMainNeighborNode,
+    {
+      node_id: "node-3",
+      label: "State machine",
+      node_type: "foundation",
+      abstract_level: "L1",
+      scope: "universal",
+      canonical_summary: "A control-model primitive for staged flow handling.",
+      mastery_status: "partial",
+      review_needed: true,
+      relation_preview: [],
+      evidence_summary: { evidence_count: 1 },
+    },
+  ],
+  relations: [
+    {
+      relation_id: "relation-1",
+      source_node_id: "node-1",
+      target_node_id: "node-2",
+      relation_type: "causes_mistake",
+    },
+    {
+      relation_id: "relation-2",
+      source_node_id: "node-3",
+      target_node_id: "node-1",
+      relation_type: "supports",
+    },
+  ],
+};
+
 const knowledgeIndexView: KnowledgeIndexViewDTO = {
   project_filter: null,
   stage_filter: null,
@@ -472,6 +509,42 @@ test("KnowledgeGraphPage renders loaded graph nodes and not a shell placeholder"
   expect(screen.getAllByText("Causes Mistake (1)").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByRole("link", { name: "State and return value separation" })[0]).toHaveAttribute("href", "#node-node-1");
   expect(screen.getAllByRole("link", { name: "Boundary confusion" })[0]).toHaveAttribute("href", "#node-node-2");
+});
+
+test("KnowledgeGraphPage filters visible relations by type", async () => {
+  const client = createClient({
+    getKnowledgeGraphMainView: vi.fn().mockResolvedValue(knowledgeGraphMainViewWithSupports),
+  });
+
+  renderWithClient(<KnowledgeGraphPage />, client, "/knowledge/graph");
+
+  await screen.findByRole("heading", { name: "Knowledge Graph" });
+  fireEvent.click(screen.getByRole("button", { name: "Supports" }));
+
+  expect(screen.getByRole("button", { name: "Supports" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getAllByText("Supports (1)").length).toBeGreaterThanOrEqual(2);
+  expect(screen.queryByText("Causes Mistake (1)")).not.toBeInTheDocument();
+});
+
+test("KnowledgeGraphPage highlights related nodes when a relation is focused", async () => {
+  renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
+
+  await screen.findByRole("heading", { name: "Knowledge Graph" });
+  fireEvent.click(screen.getByRole("button", { name: "relation-1" }));
+
+  expect(screen.getByRole("button", { name: "relation-1" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "node-node-1" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "node-node-2" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("KnowledgeGraphPage highlights related relations when a node is focused", async () => {
+  renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
+
+  await screen.findByRole("heading", { name: "Knowledge Graph" });
+  fireEvent.click(screen.getByRole("button", { name: "node-node-1" }));
+
+  expect(screen.getByRole("button", { name: "node-node-1" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "relation-1" })).toHaveAttribute("data-highlighted", "true");
 });
 
 test("KnowledgeIndexPage renders loaded index entries and not a shell placeholder", async () => {
