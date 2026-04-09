@@ -6,8 +6,8 @@
 
 - 仓库路径：`D:\Desktop\impl-phase-coach`
 - 当前分支：`main`
-- 最近已提交基线：`e392c7b docs: freeze support signal derivation rules`
-- 当前工作区：在 `e392c7b` 之上继续推进了 `阶段 40 / support_signals 结构化派生最小实现`，尚未提交
+- 最近已提交基线：`5303154 feat: derive support signals from structured assessments`
+- 当前工作区：干净，可直接从 `阶段 40 / support_signals 结构化派生最小实现` 之后继续推进
 - 当前主线：
   1. 稳定性优先主线已经收出可用基线
   2. 当前更活跃的是 `知识地图 V1 主线`
@@ -271,7 +271,33 @@
 2. React Router v7 future flag warning
 3. `App.test.tsx` 里的 `act(...)` warning
 
-## 8. 当前下一步建议
+## 8. assessment support schema 当前约束
+
+当前已经可以明确冻结的是：
+
+1. `dimension_hits`
+2. `support_basis_tags`
+3. `support_signals`
+
+这三类字段当前属于 `ReviewFlowService` 内部 assessment schema 的稳定扩展字段。
+
+当前还没有冻结的是：
+
+1. 它们是否作为对外 assessment client 的正式契约字段
+2. 这些字段是否需要被前端或外部调用方直接依赖
+
+当前工程约束应理解为：
+
+1. 服务内：`稳定`
+2. 外部 client 契约：`未冻结`
+
+因此后续如果继续推进，默认应：
+
+1. 继续让 `ProfileSpaceService` 只消费这些结构化字段
+2. 不把它们立刻扩写成前端/外部 client 的硬依赖
+3. 等字段形状至少稳定两轮后，再决定是否升级成正式外部契约
+
+## 9. 当前下一步建议
 
 当前最合理的下一步不是扩更多页面，而是继续在知识地图主线上做“assessment client 契约收口”或“主图表达轻增强”。
 
@@ -289,7 +315,7 @@
 
 而不是现在就扩复杂图交互。
 
-## 9. 新对话启动 prompt
+## 10. 新对话启动 prompt
 
 如果要在新对话里继续，可以直接给出下面这段：
 
@@ -300,8 +326,8 @@
 3. docs/superpowers/plans/2026-04-08-knowledge-map-v1-implementation.md
 
 当前基线：
-- 最近已提交基线：e392c7b docs: freeze support signal derivation rules
-- 当前工作区已经继续推进到“阶段 40 / support_signals 结构化派生最小实现”，但还未提交
+- 最近已提交基线：5303154 feat: derive support signals from structured assessments
+- 当前工作区当前为干净基线，可直接继续推进下一阶段
 
 请按 impl-phase-coach 方式继续：
 1. 先判断当前阶段

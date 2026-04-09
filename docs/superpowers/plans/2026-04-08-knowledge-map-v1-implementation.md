@@ -743,6 +743,13 @@ This task must not:
 2. expand to `depends_on`
 3. infer supports from free-form text
 
+- [ ] **Step 4: Freeze the contract boundary conservatively**
+
+After this task lands:
+1. treat `dimension_hits`, `support_basis_tags`, and `support_signals` as stable internal assessment-schema fields inside the review-flow path
+2. do not yet freeze them as a formal external assessment client contract
+3. keep `ProfileSpaceService` consuming these fields as structured internal signals rather than exposing them as required client-facing payload
+
 ---
 
 ## Self-Review
