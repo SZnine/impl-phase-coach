@@ -750,6 +750,13 @@ After this task lands:
 2. do not yet freeze them as a formal external assessment client contract
 3. keep `ProfileSpaceService` consuming these fields as structured internal signals rather than exposing them as required client-facing payload
 
+- [ ] **Step 5: Add an adoption gate for external contract exposure**
+
+Do not promote these fields to a formal external assessment client contract until at least two of the following are true:
+1. their shapes stay unchanged for two or more implementation rounds
+2. `basis_type / basis_key` semantics stop shifting
+3. a real external caller needs to consume them directly
+
 ---
 
 ### Task 11: Lightly Strengthen The Graph Main View
