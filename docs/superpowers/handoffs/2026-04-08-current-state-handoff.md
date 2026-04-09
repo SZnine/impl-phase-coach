@@ -295,16 +295,24 @@
 1. 服务内：稳定
 2. 对外 client：未冻结
 
+这轮再次判断后的结论仍然是：
+
+1. 现在不建议把 `dimension_hits / support_basis_tags / support_signals` 升成正式 assessment client 契约
+2. 只有至少满足下面 `2/3`，才值得重新评估外放：
+   - 连续两轮以上没有再改字段形状
+   - `basis_type / basis_key` 不再摇摆
+   - 至少一个真实外部调用方需要直接消费
+
 ## 9. 当前下一步建议
 
-当前最合理的下一步不是扩更多页面，而是先把 `阶段 53 / 主图轻交互增强` 做文档同步和 checkpoint，再决定是继续主图轻交互增强，还是回到 assessment client 契约判断。
+当前最合理的下一步不是立刻外放 assessment support 字段，而是继续维持“服务内稳定、对外未冻结”，只在外放门槛满足时再重新评估。
 
 推荐优先级：
 
-1. 先做文档/基线同步后的 checkpoint
+1. 当前继续不外放 assessment support 字段
 2. 然后再判断：
-   - `support_signals` 是否正式进入 assessment client 契约
-   - 或主图是否还值得再做一小步轻交互增强
+   - 主图是否还值得再做一小步轻交互增强
+   - 或 support schema 是否已经满足外放门槛
 
 ## 10. 新对话启动 prompt
 
