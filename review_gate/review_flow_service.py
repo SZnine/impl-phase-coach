@@ -450,8 +450,23 @@ class ReviewFlowService:
         self._latest_assessments[(request.project_id, request.stage_id)] = assessment
 
         if self._store is not None:
-            question_batch_id = f"qb-{request.request_id}"
-            workflow_run_id = f"run-{request.request_id}"
+            self._store.insert_workflow_request(
+                WorkflowRequestRecord(
+                    request_id=request.request_id,
+                    request_type="assessment",
+                    project_id=request.project_id,
+                    stage_id=request.stage_id,
+                    requested_by=request.actor_id,
+                    source=request.source_page,
+                    status="completed",
+                    created_at=request.created_at,
+                    payload={"request_id": request.request_id},
+                )
+            )
+            workflow_run_id, question_batch_id = self._resolve_submit_question_chain(
+                request=request,
+                current_question=current_question,
+            )
             answer_batch_id = f"ab-{request.request_id}"
             evaluation_batch_id = f"eb-{request.request_id}"
             evaluation_item_id = f"ei-{request.request_id}-0"
@@ -498,65 +513,6 @@ class ReviewFlowService:
                 evaluation_batch=evaluation_batch,
                 evaluation_items=[evaluation_item],
                 evidence_spans=evidence_spans,
-            )
-            self._store.insert_workflow_request(
-                WorkflowRequestRecord(
-                    request_id=request.request_id,
-                    request_type="assessment",
-                    project_id=request.project_id,
-                    stage_id=request.stage_id,
-                    requested_by=request.actor_id,
-                    source=request.source_page,
-                    status="completed",
-                    created_at=request.created_at,
-                    payload={"request_id": request.request_id},
-                )
-            )
-            self._store.insert_workflow_run(
-                WorkflowRunRecord(
-                    run_id=workflow_run_id,
-                    request_id=request.request_id,
-                    run_type="assessment",
-                    status="completed",
-                    started_at=request.created_at,
-                    finished_at=request.created_at,
-                    supersedes_run_id=None,
-                    payload={"request_id": request.request_id},
-                )
-            )
-            self._store.insert_question_batch(
-                QuestionBatchRecord(
-                    question_batch_id=question_batch_id,
-                    workflow_run_id=workflow_run_id,
-                    project_id=request.project_id,
-                    stage_id=request.stage_id,
-                    generated_by="review_flow_service",
-                    source=request.source_page,
-                    batch_goal=self._get_stage_definition(request.project_id, request.stage_id)["stage_goal"],
-                    entry_question_id=request.question_id,
-                    status="active",
-                    created_at=request.created_at,
-                    payload={"question_count": 1, "request_id": request.request_id},
-                )
-            )
-            self._store.insert_question_items(
-                [
-                    QuestionItemRecord(
-                        question_id=request.question_id,
-                        question_batch_id=question_batch_id,
-                        question_type=current_question.question_level,
-                        prompt=current_question.question_prompt,
-                        intent=current_question.question_intent,
-                        difficulty_level=current_question.question_level,
-                        order_index=0,
-                        status="ready",
-                        created_at=request.created_at,
-                        payload={
-                            "expected_signals": current_question.expected_signals,
-                            "source_context": current_question.source_context,
-                        },
-                    )
-                ]
             )
             self._store.insert_answer_batch(
                 AnswerBatchRecord(
@@ -649,8 +605,35 @@ class ReviewFlowService:
     def _persist_question_generation_checkpoint(self, request: dict, response: dict) -> None:
         request_id = str(request["request_id"])
         workflow_run_id = f"run-{request_id}"
-        question_batch_id = f"qb-{request_id}"
+        question_set_id = self._resolve_stage_question_set_id(
+            project_id=str(request["project_id"]),
+            stage_id=str(request["stage_id"]),
+        )
+        question_batch_id = question_set_id or f"qb-{request_id}"
         questions = list(response.get("questions", []))
+        persisted_question_items: list[QuestionItemRecord] = []
+        for index, item in enumerate(questions):
+            persisted_question_id = self._normalize_generated_question_id(
+                question_set_id=question_set_id,
+                raw_question_id=str(item.get("question_id", f"q-{index + 1}")),
+            )
+            persisted_question_items.append(
+                QuestionItemRecord(
+                    question_id=persisted_question_id,
+                    question_batch_id=question_batch_id,
+                    question_type=str(item.get("question_level", "core")),
+                    prompt=str(item.get("prompt", "")),
+                    intent=str(item.get("intent", "")),
+                    difficulty_level=str(item.get("question_level", "core")),
+                    order_index=index,
+                    status="ready",
+                    created_at=str(request.get("created_at", "")),
+                    payload={
+                        "expected_signals": list(item.get("expected_signals", [])),
+                        "source_context": list(item.get("source_context", [])),
+                    },
+                )
+            )
         self._store.insert_workflow_request(
             WorkflowRequestRecord(
                 request_id=request_id,
@@ -685,32 +668,110 @@ class ReviewFlowService:
                 generated_by="question_generation_client",
                 source="review_flow_service",
                 batch_goal=str(request.get("stage_goal", "")),
-                entry_question_id=f"{request_id}-q-1",
+                entry_question_id=(persisted_question_items[0].question_id if persisted_question_items else ""),
                 status="active",
                 created_at=str(request.get("created_at", "")),
                 payload={"question_count": len(questions), "request_id": request_id},
             )
         )
+        self._store.insert_question_items(persisted_question_items)
+
+    def _resolve_submit_question_chain(
+        self,
+        *,
+        request: SubmitAnswerRequest,
+        current_question: CurrentQuestionContext,
+    ) -> tuple[str, str]:
+        existing_chain = self._find_existing_generated_question_chain(
+            question_set_id=request.question_set_id,
+            question_id=request.question_id,
+        )
+        if existing_chain is not None:
+            return existing_chain
+        return self._persist_submit_question_chain_backfill(request=request, current_question=current_question)
+
+    def _find_existing_generated_question_chain(self, *, question_set_id: str, question_id: str) -> tuple[str, str] | None:
+        if self._store is None:
+            return None
+        question_batch = self._store.get_question_batch(question_set_id)
+        if question_batch is None:
+            return None
+        workflow_run = self._store.get_workflow_run(question_batch.workflow_run_id)
+        if workflow_run is None:
+            return None
+        question_items = self._store.list_question_items(question_batch.question_batch_id)
+        if not any(item.question_id == question_id for item in question_items):
+            return None
+        return question_batch.workflow_run_id, question_batch.question_batch_id
+
+    def _persist_submit_question_chain_backfill(
+        self,
+        *,
+        request: SubmitAnswerRequest,
+        current_question: CurrentQuestionContext,
+    ) -> tuple[str, str]:
+        workflow_run_id = f"run-{request.request_id}"
+        question_batch_id = f"qb-{request.request_id}"
+        self._store.insert_workflow_run(
+            WorkflowRunRecord(
+                run_id=workflow_run_id,
+                request_id=request.request_id,
+                run_type="assessment",
+                status="completed",
+                started_at=request.created_at,
+                finished_at=request.created_at,
+                supersedes_run_id=None,
+                payload={"request_id": request.request_id},
+            )
+        )
+        self._store.insert_question_batch(
+            QuestionBatchRecord(
+                question_batch_id=question_batch_id,
+                workflow_run_id=workflow_run_id,
+                project_id=request.project_id,
+                stage_id=request.stage_id,
+                generated_by="review_flow_service",
+                source=request.source_page,
+                batch_goal=self._get_stage_definition(request.project_id, request.stage_id)["stage_goal"],
+                entry_question_id=request.question_id,
+                status="active",
+                created_at=request.created_at,
+                payload={"question_count": 1, "request_id": request.request_id},
+            )
+        )
         self._store.insert_question_items(
             [
                 QuestionItemRecord(
-                    question_id=f"{request_id}-{item.get('question_id', f'q-{index + 1}')}",
+                    question_id=request.question_id,
                     question_batch_id=question_batch_id,
-                    question_type=str(item.get("question_level", "core")),
-                    prompt=str(item.get("prompt", "")),
-                    intent=str(item.get("intent", "")),
-                    difficulty_level=str(item.get("question_level", "core")),
-                    order_index=index,
+                    question_type=current_question.question_level,
+                    prompt=current_question.question_prompt,
+                    intent=current_question.question_intent,
+                    difficulty_level=current_question.question_level,
+                    order_index=0,
                     status="ready",
-                    created_at=str(request.get("created_at", "")),
+                    created_at=request.created_at,
                     payload={
-                        "expected_signals": list(item.get("expected_signals", [])),
-                        "source_context": list(item.get("source_context", [])),
+                        "expected_signals": current_question.expected_signals,
+                        "source_context": current_question.source_context,
                     },
                 )
-                for index, item in enumerate(questions)
             ]
         )
+        return workflow_run_id, question_batch_id
+
+    def _resolve_stage_question_set_id(self, *, project_id: str, stage_id: str) -> str:
+        stage = self._get_stage_review(project_id, stage_id)
+        if stage is not None and stage.active_question_set_id:
+            return stage.active_question_set_id
+        return str(self._get_stage_definition(project_id, stage_id).get("active_question_set_id", ""))
+
+    def _normalize_generated_question_id(self, *, question_set_id: str, raw_question_id: str) -> str:
+        if not question_set_id:
+            return raw_question_id
+        if raw_question_id.startswith(f"{question_set_id}-"):
+            return raw_question_id
+        return f"{question_set_id}-{raw_question_id}"
 
     def _build_evidence_spans(
         self,
