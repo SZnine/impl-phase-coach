@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -399,9 +400,22 @@ def test_create_default_workspace_api_initializes_first_checkpoint_tables_on_fre
     )
 
     stage_view = api.get_stage_view("proj-1", "stage-1")
+    with sqlite3.connect(db_path) as conn:
+        table_names = {
+            row[0]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
 
     assert response.success is True
+    assert response.result_type == "assessment_created"
     assert db_path.exists()
+    assert {
+        "workflow_requests",
+        "question_batches",
+        "answer_batches",
+        "evaluation_batches",
+        "assessment_fact_batches",
+    }.issubset(table_names)
     assert stage_view.knowledge_summary is not None
     assert stage_view.knowledge_summary.knowledge_entry_count == 1
     assert stage_view.knowledge_summary.mistake_count == 1
