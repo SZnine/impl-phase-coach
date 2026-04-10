@@ -7,6 +7,7 @@ from review_gate.agent_clients import AssessmentAgentClient, QuestionGenerationA
 from review_gate.answer_checkpoint_writer import AnswerCheckpointWriter
 from review_gate.assessment_synthesizer import AssessmentSynthesizer
 from review_gate.checkpoint_models import (
+    EvidenceSpanRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
     WorkflowRequestRecord,
@@ -471,6 +472,13 @@ class ReviewFlowService:
                 resolved_chain=resolved_chain,
                 assessment=writer_assessment,
             )
+            evidence_spans = self._build_submit_evidence_spans(
+                request_id=request.request_id,
+                created_at=request.created_at,
+                evidence=list(assessment_response["assessment"].get("evidence", [])),
+            )
+            if evidence_spans:
+                self._store.insert_evidence_spans(evidence_spans)
             self._store.upsert_answer_fact(
                 AnswerFact(
                     answer_id=answer_id,
@@ -661,6 +669,34 @@ class ReviewFlowService:
         if raw_question_id.startswith(f"{question_set_id}-"):
             return raw_question_id
         return f"{question_set_id}-{raw_question_id}"
+
+    def _build_submit_evidence_spans(
+        self,
+        *,
+        request_id: str,
+        created_at: str,
+        evidence: list[str],
+    ) -> list[EvidenceSpanRecord]:
+        evaluation_item_id = f"ei-{request_id}-0"
+        answer_item_id = f"ai-{request_id}-0"
+        spans: list[EvidenceSpanRecord] = []
+        for index, item in enumerate(evidence):
+            content = str(item)
+            spans.append(
+                EvidenceSpanRecord(
+                    evidence_span_id=f"es-{request_id}-{index}",
+                    evaluation_item_id=evaluation_item_id,
+                    answer_item_id=answer_item_id,
+                    span_type="quoted_text",
+                    supports_dimension="assessment",
+                    content=content,
+                    start_offset=0 if content else None,
+                    end_offset=len(content) if content else None,
+                    created_at=created_at,
+                    payload={"evidence_index": index},
+                )
+            )
+        return spans
 
     def _derive_dimension_hits(self, assessment: dict) -> list[str]:
         dimension_scores = assessment.get("dimension_scores", {})

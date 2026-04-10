@@ -10,6 +10,7 @@ from review_gate.checkpoint_models import (
     AnswerBatchRecord,
     AnswerItemRecord,
     AssessmentFactBatchRecord,
+    EvidenceSpanRecord,
     EvaluationBatchRecord,
     EvaluationItemRecord,
     QuestionBatchRecord,
@@ -103,13 +104,106 @@ class CapturingGeneratedChainResolver:
 
 
 class CapturingAnswerCheckpointWriter:
-    def __init__(self) -> None:
+    def __init__(self, *, store: SQLiteStore | None = None) -> None:
         self.calls: list[dict] = []
+        self._store = store
 
     def write(self, **kwargs) -> CheckpointWriteResult:
         self.calls.append(dict(kwargs))
         request: SubmitAnswerRequest = kwargs["request"]
         resolved_chain: ResolvedQuestionChain = kwargs["resolved_chain"]
+        if self._store is not None:
+            workflow_run_id = f"run-{request.request_id}"
+            answer_batch_id = f"ab-{request.request_id}"
+            evaluation_batch_id = f"eb-{request.request_id}"
+            answer_item_id = f"ai-{request.request_id}-0"
+            evaluation_item_id = f"ei-{request.request_id}-0"
+            self._store.insert_workflow_request(
+                WorkflowRequestRecord(
+                    request_id=request.request_id,
+                    request_type="assessment",
+                    project_id=request.project_id,
+                    stage_id=request.stage_id,
+                    requested_by=request.actor_id,
+                    source=request.source_page,
+                    status="completed",
+                    created_at=request.created_at,
+                    payload={"request_id": request.request_id},
+                )
+            )
+            self._store.insert_workflow_run(
+                WorkflowRunRecord(
+                    run_id=workflow_run_id,
+                    request_id=request.request_id,
+                    run_type="assessment",
+                    status="completed",
+                    started_at=request.created_at,
+                    finished_at=request.created_at,
+                    supersedes_run_id=None,
+                    payload={"request_id": request.request_id},
+                )
+            )
+            self._store.insert_answer_batch(
+                AnswerBatchRecord(
+                    answer_batch_id=answer_batch_id,
+                    question_batch_id=resolved_chain.question_batch_id,
+                    workflow_run_id=workflow_run_id,
+                    submitted_by=request.actor_id,
+                    submission_mode="single_submit",
+                    completion_status="complete",
+                    submitted_at=request.created_at,
+                    status="submitted",
+                    payload={"request_id": request.request_id},
+                )
+            )
+            self._store.insert_answer_items(
+                [
+                    AnswerItemRecord(
+                        answer_item_id=answer_item_id,
+                        answer_batch_id=answer_batch_id,
+                        question_id=resolved_chain.question_item_id,
+                        answered_by=request.actor_id,
+                        answer_text=request.answer_text,
+                        answer_format="plain_text",
+                        order_index=0,
+                        answered_at=request.created_at,
+                        status="answered",
+                        revision_of_answer_item_id=None,
+                        payload={"answer_excerpt": request.answer_text.strip()[:120]},
+                    )
+                ]
+            )
+            self._store.insert_evaluation_batch(
+                EvaluationBatchRecord(
+                    evaluation_batch_id=evaluation_batch_id,
+                    answer_batch_id=answer_batch_id,
+                    workflow_run_id=workflow_run_id,
+                    project_id=request.project_id,
+                    stage_id=request.stage_id,
+                    evaluated_by="assessment_agent",
+                    evaluator_version="test-writer",
+                    confidence=0.8,
+                    status="completed",
+                    evaluated_at=request.created_at,
+                    supersedes_evaluation_batch_id=None,
+                    payload={"request_id": request.request_id},
+                )
+            )
+            self._store.insert_evaluation_items(
+                [
+                    EvaluationItemRecord(
+                        evaluation_item_id=evaluation_item_id,
+                        evaluation_batch_id=evaluation_batch_id,
+                        question_id=resolved_chain.question_item_id,
+                        answer_item_id=answer_item_id,
+                        local_verdict=str(kwargs["assessment"].get("verdict", "")),
+                        confidence=float(kwargs["assessment"].get("score", 0.0)),
+                        status="completed",
+                        evaluated_at=request.created_at,
+                        payload={"reasoned_summary": str(kwargs["assessment"].get("summary", ""))},
+                    )
+                ]
+            )
         return CheckpointWriteResult(
             workflow_run_id=f"run-{request.request_id}",
             question_batch_id=resolved_chain.question_batch_id,
@@ -431,6 +525,11 @@ def test_submit_answer_delegates_checkpoint_resolution_and_writes_but_keeps_lega
         }
     )
     service = ReviewFlowService(assessment_client=assessment_client, store=store)
+    _insert_legacy_generated_chain(
+        store=store,
+        request_id="qgen-1",
+        created_at="2026-04-10T11:00:00Z",
+    )
     resolver = CapturingGeneratedChainResolver(
         ResolvedQuestionChain(
             workflow_run_id="run-qgen-1",
@@ -440,7 +539,7 @@ def test_submit_answer_delegates_checkpoint_resolution_and_writes_but_keeps_lega
             resolution_mode="reused",
         )
     )
-    writer = CapturingAnswerCheckpointWriter()
+    writer = CapturingAnswerCheckpointWriter(store=store)
     service._generated_chain_resolver = resolver
     service._answer_checkpoint_writer = writer
 
@@ -479,6 +578,31 @@ def test_submit_answer_delegates_checkpoint_resolution_and_writes_but_keeps_lega
         "gaps": ["Need clearer boundary wording."],
         "dimensions": ["decision_awareness", "boundary_awareness"],
     }
+    assert store.get_workflow_request("req-delegate-1") == WorkflowRequestRecord(
+        request_id="req-delegate-1",
+        request_type="assessment",
+        project_id="proj-1",
+        stage_id="stage-1",
+        requested_by="local-user",
+        source="question_detail",
+        status="completed",
+        created_at="2026-04-10T12:00:00Z",
+        payload={"request_id": "req-delegate-1"},
+    )
+    assert store.list_evidence_spans("ei-req-delegate-1-0") == [
+        EvidenceSpanRecord(
+            evidence_span_id="es-req-delegate-1-0",
+            evaluation_item_id="ei-req-delegate-1-0",
+            answer_item_id="ai-req-delegate-1-0",
+            span_type="quoted_text",
+            supports_dimension="assessment",
+            content="assessment evidence: verdict=partial",
+            start_offset=0,
+            end_offset=len("assessment evidence: verdict=partial"),
+            created_at="2026-04-10T12:00:00Z",
+            payload={"evidence_index": 0},
+        )
+    ]
     answer_fact = store.get_answer_fact("answer-req-delegate-1")
     assessment_fact = store.get_assessment_fact("assessment-req-delegate-1")
     assert answer_fact is not None
@@ -541,6 +665,17 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
         status="active",
         created_at="",
         payload={"question_count": 2, "request_id": "req-qgen-1"},
+    )
+    assert store.get_workflow_request("req-chain-existing-1") == WorkflowRequestRecord(
+        request_id="req-chain-existing-1",
+        request_type="assessment",
+        project_id="proj-1",
+        stage_id="stage-1",
+        requested_by="local-user",
+        source="question_detail",
+        status="completed",
+        created_at="2026-04-09T12:00:00Z",
+        payload={"request_id": "req-chain-existing-1"},
     )
     assert store.get_workflow_run("run-req-chain-existing-1") == WorkflowRunRecord(
         run_id="run-req-chain-existing-1",
@@ -606,6 +741,20 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
             "summary": "Assessment verdict partial for set-1-q-1.",
         },
     )
+    assert store.list_evidence_spans("ei-req-chain-existing-1-0") == [
+        EvidenceSpanRecord(
+            evidence_span_id="es-req-chain-existing-1-0",
+            evaluation_item_id="ei-req-chain-existing-1-0",
+            answer_item_id="ai-req-chain-existing-1-0",
+            span_type="quoted_text",
+            supports_dimension="assessment",
+            content="assessment evidence: verdict=partial",
+            start_offset=0,
+            end_offset=len("assessment evidence: verdict=partial"),
+            created_at="2026-04-09T12:00:00Z",
+            payload={"evidence_index": 0},
+        )
+    ]
 
 
 def test_submit_answer_reuses_newest_generated_question_batch_for_same_question_set(tmp_path: Path) -> None:
@@ -1065,6 +1214,20 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
         payload={"item_count": 0},
     )
     assert store.list_assessment_fact_items("afb-eb-req-chain-1") == []
+    assert store.list_evidence_spans("ei-req-chain-1-0") == [
+        EvidenceSpanRecord(
+            evidence_span_id="es-req-chain-1-0",
+            evaluation_item_id="ei-req-chain-1-0",
+            answer_item_id="ai-req-chain-1-0",
+            span_type="quoted_text",
+            supports_dimension="assessment",
+            content="assessment evidence: verdict=partial",
+            start_offset=0,
+            end_offset=len("assessment evidence: verdict=partial"),
+            created_at="2026-04-09T12:00:00Z",
+            payload={"evidence_index": 0},
+        )
+    ]
 
 
 def test_submit_answer_does_not_promote_mastery_on_weak_assessment() -> None:
