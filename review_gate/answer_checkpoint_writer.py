@@ -10,6 +10,8 @@ from review_gate.checkpoint_models import (
     AnswerItemRecord,
     EvaluationBatchRecord,
     EvaluationItemRecord,
+    QuestionBatchRecord,
+    QuestionItemRecord,
     WorkflowRequestRecord,
     WorkflowRunRecord,
 )
@@ -46,7 +48,7 @@ class AnswerCheckpointWriter:
             stage_id=request.stage_id,
             requested_by=request.actor_id,
             source=request.source_page,
-            status="completed",
+            status="in_progress",
             created_at=request.created_at,
             payload={"request_id": request.request_id},
         )
@@ -55,7 +57,7 @@ class AnswerCheckpointWriter:
             run_id=submit_workflow_run_id,
             request_id=request.request_id,
             run_type="assessment",
-            status="completed",
+            status="in_progress",
             started_at=request.created_at,
             finished_at=request.created_at,
             supersedes_run_id=None,
@@ -68,6 +70,13 @@ class AnswerCheckpointWriter:
 
         self._store.insert_workflow_request(submit_workflow_request)
         self._store.insert_workflow_run(submit_workflow_run)
+
+        if resolved_chain.resolution_mode == "fallback":
+            self._materialize_fallback_question_chain(
+                request=request,
+                resolved_chain=resolved_chain,
+                workflow_run_id=submit_workflow_run_id,
+            )
 
         answer_batch = AnswerBatchRecord(
             answer_batch_id=answer_batch_id,
@@ -150,6 +159,32 @@ class AnswerCheckpointWriter:
         self._store.insert_assessment_fact_batch(fact_batch)
         self._store.insert_assessment_fact_items(fact_items)
 
+        self._store.insert_workflow_request(
+            WorkflowRequestRecord(
+                request_id=request.request_id,
+                request_type="assessment",
+                project_id=request.project_id,
+                stage_id=request.stage_id,
+                requested_by=request.actor_id,
+                source=request.source_page,
+                status="completed",
+                created_at=request.created_at,
+                payload={"request_id": request.request_id},
+            )
+        )
+        self._store.insert_workflow_run(
+            WorkflowRunRecord(
+                run_id=submit_workflow_run_id,
+                request_id=request.request_id,
+                run_type="assessment",
+                status="completed",
+                started_at=request.created_at,
+                finished_at=request.created_at,
+                supersedes_run_id=None,
+                payload={"request_id": request.request_id},
+            )
+        )
+
         return CheckpointWriteResult(
             workflow_run_id=submit_workflow_run_id,
             question_batch_id=resolved_chain.question_batch_id,
@@ -157,6 +192,56 @@ class AnswerCheckpointWriter:
             evaluation_batch_id=evaluation_batch_id,
             assessment_fact_batch_id=fact_batch.assessment_fact_batch_id,
         )
+
+    def _materialize_fallback_question_chain(
+        self,
+        *,
+        request: SubmitAnswerRequest,
+        resolved_chain: ResolvedQuestionChain,
+        workflow_run_id: str,
+    ) -> None:
+        if self._store.get_question_batch(resolved_chain.question_batch_id) is None:
+            self._store.insert_question_batch(
+                QuestionBatchRecord(
+                    question_batch_id=resolved_chain.question_batch_id,
+                    workflow_run_id=workflow_run_id,
+                    project_id=request.project_id,
+                    stage_id=request.stage_id,
+                    generated_by="answer_checkpoint_writer",
+                    source=request.source_page,
+                    batch_goal="materialize fallback submit-side question chain",
+                    entry_question_id=resolved_chain.question_item_id,
+                    status="active",
+                    created_at=request.created_at,
+                    payload={
+                        "request_id": request.request_id,
+                        "resolution_mode": resolved_chain.resolution_mode,
+                        "transport_question_id": resolved_chain.transport_question_id,
+                    },
+                )
+            )
+
+        if not self._store.list_question_items(resolved_chain.question_batch_id):
+            self._store.insert_question_items(
+                [
+                    QuestionItemRecord(
+                        question_id=resolved_chain.question_item_id,
+                        question_batch_id=resolved_chain.question_batch_id,
+                        question_type="core",
+                        prompt=f"Fallback question for {resolved_chain.transport_question_id}.",
+                        intent="Preserve submit-side checkpoint continuity.",
+                        difficulty_level="core",
+                        order_index=0,
+                        status="ready",
+                        created_at=request.created_at,
+                        payload={
+                            "request_id": request.request_id,
+                            "resolution_mode": resolved_chain.resolution_mode,
+                            "transport_question_id": resolved_chain.transport_question_id,
+                        },
+                    )
+                ]
+            )
 
     @staticmethod
     def _coerce_str_list(value: object) -> list[str]:

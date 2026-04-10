@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.answer_checkpoint_writer import AnswerCheckpointWriter, CheckpointWriteResult
 from review_gate.assessment_synthesizer import AssessmentSynthesizer
@@ -343,3 +345,148 @@ def test_answer_checkpoint_writer_uses_assessment_synthesizer_for_multiple_gaps(
             },
         ),
     ]
+
+
+def test_answer_checkpoint_writer_materializes_fallback_question_chain(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    writer = AnswerCheckpointWriter(store=store, synthesizer=AssessmentSynthesizer())
+
+    result = writer.write(
+        request=_writer_request(
+            request_id="req-submit-3",
+            answer_text="We split state and scoring boundaries.",
+            created_at="2026-04-10T11:10:00Z",
+        ),
+        resolved_chain=ResolvedQuestionChain(
+            workflow_run_id="run-req-submit-3",
+            question_batch_id="qb-req-submit-3",
+            question_item_id="req-submit-3-set-1-q-1",
+            transport_question_id="set-1-q-1",
+            resolution_mode="fallback",
+        ),
+        assessment={
+            "verdict": "partial",
+            "score": 0.55,
+            "summary": "Fallback chain still writes checkpoint records.",
+            "gaps": ["proposal-execution-separation"],
+            "dimensions": ["understanding"],
+        },
+    )
+
+    assert result.workflow_run_id == "run-req-submit-3"
+    assert store.get_workflow_request("req-submit-3") == WorkflowRequestRecord(
+        request_id="req-submit-3",
+        request_type="assessment",
+        project_id="proj-1",
+        stage_id="stage-1",
+        requested_by="local-user",
+        source="question_detail",
+        status="completed",
+        created_at="2026-04-10T11:10:00Z",
+        payload={"request_id": "req-submit-3"},
+    )
+    assert store.get_workflow_run("run-req-submit-3") == WorkflowRunRecord(
+        run_id="run-req-submit-3",
+        request_id="req-submit-3",
+        run_type="assessment",
+        status="completed",
+        started_at="2026-04-10T11:10:00Z",
+        finished_at="2026-04-10T11:10:00Z",
+        supersedes_run_id=None,
+        payload={"request_id": "req-submit-3"},
+    )
+    assert store.get_question_batch("qb-req-submit-3") == QuestionBatchRecord(
+        question_batch_id="qb-req-submit-3",
+        workflow_run_id="run-req-submit-3",
+        project_id="proj-1",
+        stage_id="stage-1",
+        generated_by="answer_checkpoint_writer",
+        source="question_detail",
+        batch_goal="materialize fallback submit-side question chain",
+        entry_question_id="req-submit-3-set-1-q-1",
+        status="active",
+        created_at="2026-04-10T11:10:00Z",
+        payload={
+            "request_id": "req-submit-3",
+            "resolution_mode": "fallback",
+            "transport_question_id": "set-1-q-1",
+        },
+    )
+    assert store.list_question_items("qb-req-submit-3") == [
+        QuestionItemRecord(
+            question_id="req-submit-3-set-1-q-1",
+            question_batch_id="qb-req-submit-3",
+            question_type="core",
+            prompt="Fallback question for set-1-q-1.",
+            intent="Preserve submit-side checkpoint continuity.",
+            difficulty_level="core",
+            order_index=0,
+            status="ready",
+            created_at="2026-04-10T11:10:00Z",
+            payload={
+                "request_id": "req-submit-3",
+                "resolution_mode": "fallback",
+                "transport_question_id": "set-1-q-1",
+            },
+        )
+    ]
+
+
+def test_answer_checkpoint_writer_leaves_submit_workflow_in_progress_on_downstream_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    writer = AnswerCheckpointWriter(store=store, synthesizer=AssessmentSynthesizer())
+
+    def fail_insert_answer_batch(_: AnswerBatchRecord) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(store, "insert_answer_batch", fail_insert_answer_batch)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        writer.write(
+            request=_writer_request(
+                request_id="req-submit-4",
+                answer_text="We split state and scoring boundaries.",
+                created_at="2026-04-10T11:15:00Z",
+            ),
+            resolved_chain=ResolvedQuestionChain(
+                workflow_run_id="run-req-submit-4",
+                question_batch_id="qb-req-submit-4",
+                question_item_id="req-submit-4-set-1-q-1",
+                transport_question_id="set-1-q-1",
+                resolution_mode="fallback",
+            ),
+            assessment={
+                "verdict": "partial",
+                "score": 0.4,
+                "summary": "Downstream failure should not finalize workflow.",
+                "gaps": ["proposal-execution-separation"],
+                "dimensions": ["understanding"],
+            },
+        )
+
+    assert store.get_workflow_request("req-submit-4") == WorkflowRequestRecord(
+        request_id="req-submit-4",
+        request_type="assessment",
+        project_id="proj-1",
+        stage_id="stage-1",
+        requested_by="local-user",
+        source="question_detail",
+        status="in_progress",
+        created_at="2026-04-10T11:15:00Z",
+        payload={"request_id": "req-submit-4"},
+    )
+    assert store.get_workflow_run("run-req-submit-4") == WorkflowRunRecord(
+        run_id="run-req-submit-4",
+        request_id="req-submit-4",
+        run_type="assessment",
+        status="in_progress",
+        started_at="2026-04-10T11:15:00Z",
+        finished_at="2026-04-10T11:15:00Z",
+        supersedes_run_id=None,
+        payload={"request_id": "req-submit-4"},
+    )
