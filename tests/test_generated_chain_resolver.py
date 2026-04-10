@@ -149,6 +149,136 @@ def test_generated_chain_resolver_reuses_latest_generated_chain(tmp_path: Path) 
     assert resolved.generated_item.question_id == "req-qgen-2-q-1"
 
 
+def test_generated_chain_resolver_skips_corrupt_latest_event_and_uses_earlier_valid_chain(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    resolver = GeneratedChainResolver(store=store)
+
+    _seed_generated_chain(
+        store,
+        request_id="req-qgen-1",
+        created_at="2026-04-10T10:00:00Z",
+        transport_question_id="set-1-q-1",
+    )
+    store.append_event(
+        WorkspaceEvent(
+            event_id="evt-question-set-generated-00000001-req-qgen-1",
+            project_id="proj-1",
+            event_type="question_set_generated",
+            created_at="2026-04-10T10:00:00Z",
+            payload={
+                "stage_id": "stage-1",
+                "question_set_id": "set-1",
+                "question_batch_id": "qb-req-qgen-1",
+                "workflow_run_id": "run-req-qgen-1",
+                "question_item_ids": ["req-qgen-1-q-1"],
+            },
+        )
+    )
+    store.append_event(
+        WorkspaceEvent(
+            event_id="evt-question-set-generated-00000002-req-qgen-2",
+            project_id="proj-1",
+            event_type="question_set_generated",
+            created_at="2026-04-10T10:05:00Z",
+            payload={
+                "stage_id": "stage-1",
+                "question_set_id": "set-1",
+                "question_batch_id": "qb-req-qgen-2",
+                "workflow_run_id": "run-req-qgen-2",
+                "question_item_ids": ["req-qgen-2-q-1"],
+            },
+        )
+    )
+    _seed_generated_chain(
+        store,
+        request_id="req-qgen-2",
+        created_at="2026-04-10T10:05:00Z",
+        transport_question_id="different-transport-question",
+    )
+
+    resolved = resolver.resolve(
+        project_id="proj-1",
+        stage_id="stage-1",
+        question_set_id="set-1",
+        transport_question_id="set-1-q-1",
+        request_id="req-submit-1",
+        created_at="2026-04-10T10:10:00Z",
+    )
+
+    assert resolved.resolution_mode == "reused"
+    assert resolved.workflow_run_id == "run-req-qgen-1"
+    assert resolved.question_batch_id == "qb-req-qgen-1"
+    assert resolved.question_item_id == "req-qgen-1-q-1"
+
+
+def test_generated_chain_resolver_uses_event_id_to_pick_newest_same_created_at_event(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    resolver = GeneratedChainResolver(store=store)
+
+    _seed_generated_chain(
+        store,
+        request_id="req-qgen-1",
+        created_at="2026-04-10T10:00:00Z",
+        transport_question_id="set-1-q-1",
+    )
+    _seed_generated_chain(
+        store,
+        request_id="req-qgen-2",
+        created_at="2026-04-10T10:00:00Z",
+        transport_question_id="set-1-q-1",
+    )
+    store.append_event(
+        WorkspaceEvent(
+            event_id="evt-question-set-generated-00000001-req-qgen-1",
+            project_id="proj-1",
+            event_type="question_set_generated",
+            created_at="2026-04-10T10:00:00Z",
+            payload={
+                "stage_id": "stage-1",
+                "question_set_id": "set-1",
+                "question_batch_id": "qb-req-qgen-1",
+                "workflow_run_id": "run-req-qgen-1",
+                "question_item_ids": ["req-qgen-1-q-1"],
+            },
+        )
+    )
+    store.append_event(
+        WorkspaceEvent(
+            event_id="evt-question-set-generated-00000002-req-qgen-2",
+            project_id="proj-1",
+            event_type="question_set_generated",
+            created_at="2026-04-10T10:00:00Z",
+            payload={
+                "stage_id": "stage-1",
+                "question_set_id": "set-1",
+                "question_batch_id": "qb-req-qgen-2",
+                "workflow_run_id": "run-req-qgen-2",
+                "question_item_ids": ["req-qgen-2-q-1"],
+            },
+        )
+    )
+
+    resolved = resolver.resolve(
+        project_id="proj-1",
+        stage_id="stage-1",
+        question_set_id="set-1",
+        transport_question_id="set-1-q-1",
+        request_id="req-submit-1",
+        created_at="2026-04-10T10:10:00Z",
+    )
+
+    assert resolved.resolution_mode == "reused"
+    assert resolved.workflow_run_id == "run-req-qgen-2"
+    assert resolved.question_batch_id == "qb-req-qgen-2"
+    assert resolved.question_item_id == "req-qgen-2-q-1"
+
+
 def test_generated_chain_resolver_falls_back_without_generated_chain(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
