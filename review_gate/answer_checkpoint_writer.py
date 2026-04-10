@@ -1,0 +1,146 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from review_gate.action_dtos import SubmitAnswerRequest
+from review_gate.assessment_synthesizer import AssessmentSynthesizer
+from review_gate.checkpoint_models import (
+    AnswerBatchRecord,
+    AnswerItemRecord,
+    EvaluationBatchRecord,
+    EvaluationItemRecord,
+)
+from review_gate.generated_chain_resolver import ResolvedQuestionChain
+from review_gate.storage_sqlite import SQLiteStore
+
+
+@dataclass(slots=True)
+class CheckpointWriteResult:
+    workflow_run_id: str
+    question_batch_id: str
+    answer_batch_id: str
+    evaluation_batch_id: str
+    assessment_fact_batch_id: str
+
+
+class AnswerCheckpointWriter:
+    def __init__(self, *, store: SQLiteStore, synthesizer: AssessmentSynthesizer) -> None:
+        self._store = store
+        self._synthesizer = synthesizer
+
+    def write(
+        self,
+        *,
+        request: SubmitAnswerRequest,
+        resolved_chain: ResolvedQuestionChain,
+        assessment: dict[str, Any],
+    ) -> CheckpointWriteResult:
+        confidence = float(assessment.get("score", 0.0))
+        answer_batch_id = f"ab-{request.request_id}"
+        answer_item_id = f"ai-{request.request_id}-0"
+        evaluation_batch_id = f"eb-{request.request_id}"
+        evaluation_item_id = f"ei-{request.request_id}-0"
+
+        answer_batch = AnswerBatchRecord(
+            answer_batch_id=answer_batch_id,
+            question_batch_id=resolved_chain.question_batch_id,
+            workflow_run_id=resolved_chain.workflow_run_id,
+            submitted_by=request.actor_id,
+            submission_mode="single_submit",
+            completion_status="complete",
+            submitted_at=request.created_at,
+            status="submitted",
+            payload={
+                "request_id": request.request_id,
+                "resolution_mode": resolved_chain.resolution_mode,
+                "transport_question_id": resolved_chain.transport_question_id,
+            },
+        )
+        answer_item = AnswerItemRecord(
+            answer_item_id=answer_item_id,
+            answer_batch_id=answer_batch_id,
+            question_id=resolved_chain.question_item_id,
+            answered_by=request.actor_id,
+            answer_text=request.answer_text,
+            answer_format="plain_text",
+            order_index=0,
+            answered_at=request.created_at,
+            status="answered",
+            revision_of_answer_item_id=None,
+            payload={
+                "request_id": request.request_id,
+                "transport_question_id": request.question_id,
+                "answer_excerpt": request.answer_text.strip()[:120],
+            },
+        )
+        evaluation_batch = EvaluationBatchRecord(
+            evaluation_batch_id=evaluation_batch_id,
+            answer_batch_id=answer_batch_id,
+            workflow_run_id=resolved_chain.workflow_run_id,
+            project_id=request.project_id,
+            stage_id=request.stage_id,
+            evaluated_by="assessment_agent",
+            evaluator_version="review_flow_service:first-checkpoint",
+            confidence=confidence,
+            status="completed",
+            evaluated_at=request.created_at,
+            supersedes_evaluation_batch_id=None,
+            payload={
+                "request_id": request.request_id,
+                "verdict": str(assessment.get("verdict", "")),
+                "score": confidence,
+                "summary": str(assessment.get("summary", "")),
+            },
+        )
+        evaluation_item = EvaluationItemRecord(
+            evaluation_item_id=evaluation_item_id,
+            evaluation_batch_id=evaluation_batch_id,
+            question_id=resolved_chain.question_item_id,
+            answer_item_id=answer_item_id,
+            local_verdict=str(assessment.get("verdict", "")),
+            confidence=confidence,
+            status="completed",
+            evaluated_at=request.created_at,
+            payload={
+                "reasoned_summary": str(assessment.get("summary", "")),
+                "diagnosed_gaps": self._coerce_str_list(assessment.get("gaps")),
+                "dimension_refs": self._coerce_str_list(assessment.get("dimensions")),
+            },
+        )
+
+        self._store.insert_answer_batch(answer_batch)
+        self._store.insert_answer_items([answer_item])
+        self._store.insert_evaluation_batch(evaluation_batch)
+        self._store.insert_evaluation_items([evaluation_item])
+
+        fact_batch, fact_items = self._synthesizer.synthesize(
+            workflow_run_id=resolved_chain.workflow_run_id,
+            evaluation_batch=evaluation_batch,
+            evaluation_items=[evaluation_item],
+            evidence_spans=[],
+        )
+        self._store.insert_assessment_fact_batch(fact_batch)
+        self._store.insert_assessment_fact_items(fact_items)
+
+        return CheckpointWriteResult(
+            workflow_run_id=resolved_chain.workflow_run_id,
+            question_batch_id=resolved_chain.question_batch_id,
+            answer_batch_id=answer_batch_id,
+            evaluation_batch_id=evaluation_batch_id,
+            assessment_fact_batch_id=fact_batch.assessment_fact_batch_id,
+        )
+
+    @staticmethod
+    def _coerce_str_list(value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            items = value
+        elif isinstance(value, tuple):
+            items = list(value)
+        elif isinstance(value, dict):
+            items = list(value.keys())
+        else:
+            items = [value]
+        return [str(item) for item in items]
