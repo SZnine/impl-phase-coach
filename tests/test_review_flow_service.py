@@ -1,4 +1,6 @@
 from review_gate.action_dtos import SubmitAnswerRequest
+from review_gate.answer_checkpoint_writer import CheckpointWriteResult
+from review_gate.generated_chain_resolver import ResolvedQuestionChain
 from review_gate.domain import QuestionSet, WorkspaceEvent
 from review_gate.review_flow_service import ReviewFlowService
 from review_gate.storage_sqlite import SQLiteStore
@@ -88,6 +90,33 @@ class WeakAssessmentClient:
             "warnings": [],
             "confidence": 0.7,
         }
+
+
+class CapturingGeneratedChainResolver:
+    def __init__(self, resolved_chain: ResolvedQuestionChain) -> None:
+        self.resolved_chain = resolved_chain
+        self.calls: list[dict] = []
+
+    def resolve(self, **kwargs) -> ResolvedQuestionChain:
+        self.calls.append(dict(kwargs))
+        return self.resolved_chain
+
+
+class CapturingAnswerCheckpointWriter:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def write(self, **kwargs) -> CheckpointWriteResult:
+        self.calls.append(dict(kwargs))
+        request: SubmitAnswerRequest = kwargs["request"]
+        resolved_chain: ResolvedQuestionChain = kwargs["resolved_chain"]
+        return CheckpointWriteResult(
+            workflow_run_id=f"run-{request.request_id}",
+            question_batch_id=resolved_chain.question_batch_id,
+            answer_batch_id=f"ab-{request.request_id}",
+            evaluation_batch_id=f"eb-{request.request_id}",
+            assessment_fact_batch_id=f"afb-eb-{request.request_id}",
+        )
 
 
 def _semantic_question_set() -> QuestionSet:
@@ -384,6 +413,78 @@ def test_submit_answer_uses_current_question_context_and_user_excerpt() -> None:
     assert assessment_client.requests[0]["expected_signals"] == ["stage-1", "set-1", "set-1-q-2", "why"]
 
 
+def test_submit_answer_delegates_checkpoint_resolution_and_writes_but_keeps_legacy_facts(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    question_set = _semantic_question_set()
+    store.upsert_question_set(question_set)
+    assessment_client = CapturingAssessmentClient(
+        assessment_override={
+            "core_gaps": ["Need clearer boundary wording."],
+            "dimension_scores": {
+                "correctness": 3,
+                "reasoning": 3,
+                "decision_awareness": 2,
+                "boundary_awareness": 1,
+                "stability": 2,
+            },
+        }
+    )
+    service = ReviewFlowService(assessment_client=assessment_client, store=store)
+    resolver = CapturingGeneratedChainResolver(
+        ResolvedQuestionChain(
+            workflow_run_id="run-qgen-1",
+            question_batch_id="qb-qgen-1",
+            question_item_id="qgen-1-q-1",
+            transport_question_id="set-1-q-1",
+            resolution_mode="reused",
+        )
+    )
+    writer = CapturingAnswerCheckpointWriter()
+    service._generated_chain_resolver = resolver
+    service._answer_checkpoint_writer = writer
+
+    response = service.submit_answer(
+        SubmitAnswerRequest(
+            request_id="req-delegate-1",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-10T12:00:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="We split the boundary to keep state and scoring separate.",
+            draft_id=None,
+        )
+    )
+
+    assert response.success is True
+    assert resolver.calls == [
+        {
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "question_set_id": "set-1",
+            "transport_question_id": "set-1-q-1",
+            "request_id": "req-delegate-1",
+            "created_at": "2026-04-10T12:00:00Z",
+        }
+    ]
+    assert len(writer.calls) == 1
+    assert writer.calls[0]["resolved_chain"] == resolver.resolved_chain
+    assert writer.calls[0]["assessment"] == {
+        "verdict": "partial",
+        "score": 0.8,
+        "summary": "Assessment verdict partial for set-1-q-1.",
+        "gaps": ["Need clearer boundary wording."],
+        "dimensions": ["decision_awareness", "boundary_awareness"],
+    }
+    answer_fact = store.get_answer_fact("answer-req-delegate-1")
+    assessment_fact = store.get_assessment_fact("assessment-req-delegate-1")
+    assert answer_fact is not None
+    assert assessment_fact is not None
+
+
 def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
@@ -441,18 +542,31 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
         created_at="",
         payload={"question_count": 2, "request_id": "req-qgen-1"},
     )
-    assert store.get_workflow_run("run-req-chain-existing-1") is None
+    assert store.get_workflow_run("run-req-chain-existing-1") == WorkflowRunRecord(
+        run_id="run-req-chain-existing-1",
+        request_id="req-chain-existing-1",
+        run_type="assessment",
+        status="completed",
+        started_at="2026-04-09T12:00:00Z",
+        finished_at="2026-04-09T12:00:00Z",
+        supersedes_run_id=None,
+        payload={"request_id": "req-chain-existing-1"},
+    )
     assert store.get_question_batch("qb-req-chain-existing-1") is None
     assert store.get_answer_batch("ab-req-chain-existing-1") == AnswerBatchRecord(
         answer_batch_id="ab-req-chain-existing-1",
         question_batch_id="qb-req-qgen-1",
-        workflow_run_id="run-req-qgen-1",
+        workflow_run_id="run-req-chain-existing-1",
         submitted_by="local-user",
         submission_mode="single_submit",
         completion_status="complete",
         submitted_at="2026-04-09T12:00:00Z",
         status="submitted",
-        payload={"request_id": "req-chain-existing-1"},
+        payload={
+            "request_id": "req-chain-existing-1",
+            "resolution_mode": "reused",
+            "transport_question_id": "set-1-q-1",
+        },
     )
     assert store.list_answer_items("ab-req-chain-existing-1") == [
         AnswerItemRecord(
@@ -466,13 +580,17 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
             answered_at="2026-04-09T12:00:00Z",
             status="answered",
             revision_of_answer_item_id=None,
-            payload={"answer_excerpt": "We split the boundary to keep state and scoring separate."},
+            payload={
+                "request_id": "req-chain-existing-1",
+                "transport_question_id": "set-1-q-1",
+                "answer_excerpt": "We split the boundary to keep state and scoring separate.",
+            },
         )
     ]
     assert store.get_evaluation_batch("eb-req-chain-existing-1") == EvaluationBatchRecord(
         evaluation_batch_id="eb-req-chain-existing-1",
         answer_batch_id="ab-req-chain-existing-1",
-        workflow_run_id="run-req-qgen-1",
+        workflow_run_id="run-req-chain-existing-1",
         project_id="proj-1",
         stage_id="stage-1",
         evaluated_by="assessment_agent",
@@ -481,7 +599,12 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
         status="completed",
         evaluated_at="2026-04-09T12:00:00Z",
         supersedes_evaluation_batch_id=None,
-        payload={"request_id": "req-chain-existing-1"},
+        payload={
+            "request_id": "req-chain-existing-1",
+            "verdict": "partial",
+            "score": 0.8,
+            "summary": "Assessment verdict partial for set-1-q-1.",
+        },
     )
 
 
@@ -551,13 +674,17 @@ def test_submit_answer_reuses_newest_generated_question_batch_for_same_question_
     assert store.get_answer_batch("ab-req-chain-existing-2") == AnswerBatchRecord(
         answer_batch_id="ab-req-chain-existing-2",
         question_batch_id="qb-req-qgen-10",
-        workflow_run_id="run-req-qgen-10",
+        workflow_run_id="run-req-chain-existing-2",
         submitted_by="local-user",
         submission_mode="single_submit",
         completion_status="complete",
         submitted_at="2026-04-09T13:00:00Z",
         status="submitted",
-        payload={"request_id": "req-chain-existing-2"},
+        payload={
+            "request_id": "req-chain-existing-2",
+            "resolution_mode": "reused",
+            "transport_question_id": "set-1-q-1",
+        },
     )
     assert store.list_answer_items("ab-req-chain-existing-2") == [
         AnswerItemRecord(
@@ -571,13 +698,17 @@ def test_submit_answer_reuses_newest_generated_question_batch_for_same_question_
             answered_at="2026-04-09T13:00:00Z",
             status="answered",
             revision_of_answer_item_id=None,
-            payload={"answer_excerpt": "We split the boundary to keep state and scoring separate."},
+            payload={
+                "request_id": "req-chain-existing-2",
+                "transport_question_id": "set-1-q-1",
+                "answer_excerpt": "We split the boundary to keep state and scoring separate.",
+            },
         )
     ]
     assert store.get_evaluation_batch("eb-req-chain-existing-2") == EvaluationBatchRecord(
         evaluation_batch_id="eb-req-chain-existing-2",
         answer_batch_id="ab-req-chain-existing-2",
-        workflow_run_id="run-req-qgen-10",
+        workflow_run_id="run-req-chain-existing-2",
         project_id="proj-1",
         stage_id="stage-1",
         evaluated_by="assessment_agent",
@@ -586,7 +717,12 @@ def test_submit_answer_reuses_newest_generated_question_batch_for_same_question_
         status="completed",
         evaluated_at="2026-04-09T13:00:00Z",
         supersedes_evaluation_batch_id=None,
-        payload={"request_id": "req-chain-existing-2"},
+        payload={
+            "request_id": "req-chain-existing-2",
+            "verdict": "partial",
+            "score": 0.8,
+            "summary": "Assessment verdict partial for set-1-q-1.",
+        },
     )
 
 
@@ -628,13 +764,17 @@ def test_submit_answer_reuses_later_legacy_generated_batch_for_same_question_set
     assert store.get_answer_batch("ab-req-chain-existing-legacy-1") == AnswerBatchRecord(
         answer_batch_id="ab-req-chain-existing-legacy-1",
         question_batch_id="qb-req-qgen-10",
-        workflow_run_id="run-req-qgen-10",
+        workflow_run_id="run-req-chain-existing-legacy-1",
         submitted_by="local-user",
         submission_mode="single_submit",
         completion_status="complete",
         submitted_at="2026-04-09T13:30:00Z",
         status="submitted",
-        payload={"request_id": "req-chain-existing-legacy-1"},
+        payload={
+            "request_id": "req-chain-existing-legacy-1",
+            "resolution_mode": "reused",
+            "transport_question_id": "set-1-q-1",
+        },
     )
     assert store.list_answer_items("ab-req-chain-existing-legacy-1") == [
         AnswerItemRecord(
@@ -648,13 +788,17 @@ def test_submit_answer_reuses_later_legacy_generated_batch_for_same_question_set
             answered_at="2026-04-09T13:30:00Z",
             status="answered",
             revision_of_answer_item_id=None,
-            payload={"answer_excerpt": "We split the boundary to keep state and scoring separate."},
+            payload={
+                "request_id": "req-chain-existing-legacy-1",
+                "transport_question_id": "set-1-q-1",
+                "answer_excerpt": "We split the boundary to keep state and scoring separate.",
+            },
         )
     ]
     assert store.get_evaluation_batch("eb-req-chain-existing-legacy-1") == EvaluationBatchRecord(
         evaluation_batch_id="eb-req-chain-existing-legacy-1",
         answer_batch_id="ab-req-chain-existing-legacy-1",
-        workflow_run_id="run-req-qgen-10",
+        workflow_run_id="run-req-chain-existing-legacy-1",
         project_id="proj-1",
         stage_id="stage-1",
         evaluated_by="assessment_agent",
@@ -663,7 +807,12 @@ def test_submit_answer_reuses_later_legacy_generated_batch_for_same_question_set
         status="completed",
         evaluated_at="2026-04-09T13:30:00Z",
         supersedes_evaluation_batch_id=None,
-        payload={"request_id": "req-chain-existing-legacy-1"},
+        payload={
+            "request_id": "req-chain-existing-legacy-1",
+            "verdict": "partial",
+            "score": 0.8,
+            "summary": "Assessment verdict partial for set-1-q-1.",
+        },
     )
 
 
@@ -719,13 +868,17 @@ def test_submit_answer_reuses_later_legacy_batch_over_older_indexed_batch(tmp_pa
     assert store.get_answer_batch("ab-req-chain-mixed-1") == AnswerBatchRecord(
         answer_batch_id="ab-req-chain-mixed-1",
         question_batch_id="qb-req-qgen-legacy-later-1",
-        workflow_run_id="run-req-qgen-legacy-later-1",
+        workflow_run_id="run-req-chain-mixed-1",
         submitted_by="local-user",
         submission_mode="single_submit",
         completion_status="complete",
         submitted_at="2026-04-10T10:30:00Z",
         status="submitted",
-        payload={"request_id": "req-chain-mixed-1"},
+        payload={
+            "request_id": "req-chain-mixed-1",
+            "resolution_mode": "reused",
+            "transport_question_id": "set-1-q-1",
+        },
     )
     assert store.list_answer_items("ab-req-chain-mixed-1") == [
         AnswerItemRecord(
@@ -739,13 +892,17 @@ def test_submit_answer_reuses_later_legacy_batch_over_older_indexed_batch(tmp_pa
             answered_at="2026-04-10T10:30:00Z",
             status="answered",
             revision_of_answer_item_id=None,
-            payload={"answer_excerpt": "We split the boundary to keep state and scoring separate."},
+            payload={
+                "request_id": "req-chain-mixed-1",
+                "transport_question_id": "set-1-q-1",
+                "answer_excerpt": "We split the boundary to keep state and scoring separate.",
+            },
         )
     ]
     assert store.get_evaluation_batch("eb-req-chain-mixed-1") == EvaluationBatchRecord(
         evaluation_batch_id="eb-req-chain-mixed-1",
         answer_batch_id="ab-req-chain-mixed-1",
-        workflow_run_id="run-req-qgen-legacy-later-1",
+        workflow_run_id="run-req-chain-mixed-1",
         project_id="proj-1",
         stage_id="stage-1",
         evaluated_by="assessment_agent",
@@ -754,7 +911,12 @@ def test_submit_answer_reuses_later_legacy_batch_over_older_indexed_batch(tmp_pa
         status="completed",
         evaluated_at="2026-04-10T10:30:00Z",
         supersedes_evaluation_batch_id=None,
-        payload={"request_id": "req-chain-mixed-1"},
+        payload={
+            "request_id": "req-chain-mixed-1",
+            "verdict": "partial",
+            "score": 0.8,
+            "summary": "Assessment verdict partial for set-1-q-1.",
+        },
     )
 
 
@@ -808,28 +970,32 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
         workflow_run_id="run-req-chain-1",
         project_id="proj-1",
         stage_id="stage-1",
-        generated_by="review_flow_service",
+        generated_by="answer_checkpoint_writer",
         source="question_detail",
-        batch_goal="freeze the minimal Question / Assessment / Decision boundary",
+        batch_goal="materialize fallback submit-side question chain",
         entry_question_id="req-chain-1-set-1-q-1",
         status="active",
         created_at="2026-04-09T12:00:00Z",
-        payload={"question_count": 1, "request_id": "req-chain-1"},
+        payload={
+            "request_id": "req-chain-1",
+            "resolution_mode": "fallback",
+            "transport_question_id": "set-1-q-1",
+        },
     )
     assert store.list_question_items("qb-req-chain-1") == [
         QuestionItemRecord(
             question_id="req-chain-1-set-1-q-1",
             question_batch_id="qb-req-chain-1",
             question_type="core",
-            prompt="Explain the boundary for question set-1-q-1.",
-            intent="Check current-stage understanding.",
+            prompt="Fallback question for set-1-q-1.",
+            intent="Preserve submit-side checkpoint continuity.",
             difficulty_level="core",
             order_index=0,
             status="ready",
             created_at="2026-04-09T12:00:00Z",
             payload={
-                "expected_signals": ["stage-1", "set-1", "set-1-q-1", "core"],
-                "source_context": ["stage-1:set-1:set-1-q-1"],
+                "request_id": "req-chain-1",
+                "resolution_mode": "fallback",
                 "transport_question_id": "set-1-q-1",
             },
         )
@@ -843,7 +1009,11 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
         completion_status="complete",
         submitted_at="2026-04-09T12:00:00Z",
         status="submitted",
-        payload={"request_id": "req-chain-1"},
+        payload={
+            "request_id": "req-chain-1",
+            "resolution_mode": "fallback",
+            "transport_question_id": "set-1-q-1",
+        },
     )
     assert store.list_answer_items("ab-req-chain-1") == [
         AnswerItemRecord(
@@ -857,7 +1027,11 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
             answered_at="2026-04-09T12:00:00Z",
             status="answered",
             revision_of_answer_item_id=None,
-            payload={"answer_excerpt": "We split the boundary to keep state and scoring separate."},
+            payload={
+                "request_id": "req-chain-1",
+                "transport_question_id": "set-1-q-1",
+                "answer_excerpt": "We split the boundary to keep state and scoring separate.",
+            },
         )
     ]
     assert store.get_evaluation_batch("eb-req-chain-1") == EvaluationBatchRecord(
@@ -872,7 +1046,12 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
         status="completed",
         evaluated_at="2026-04-09T12:00:00Z",
         supersedes_evaluation_batch_id=None,
-        payload={"request_id": "req-chain-1"},
+        payload={
+            "request_id": "req-chain-1",
+            "verdict": "partial",
+            "score": 0.8,
+            "summary": "Assessment verdict partial for set-1-q-1.",
+        },
     )
     assert store.get_latest_assessment_fact_batch("proj-1", "stage-1") == AssessmentFactBatchRecord(
         assessment_fact_batch_id="afb-eb-req-chain-1",

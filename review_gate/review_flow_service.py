@@ -4,19 +4,16 @@ from dataclasses import dataclass
 
 from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.agent_clients import AssessmentAgentClient, QuestionGenerationAgentClient
+from review_gate.answer_checkpoint_writer import AnswerCheckpointWriter
 from review_gate.assessment_synthesizer import AssessmentSynthesizer
 from review_gate.checkpoint_models import (
-    AnswerBatchRecord,
-    AnswerItemRecord,
-    WorkflowRequestRecord,
-    WorkflowRunRecord,
-    EvaluationBatchRecord,
-    EvaluationItemRecord,
-    EvidenceSpanRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
+    WorkflowRequestRecord,
+    WorkflowRunRecord,
 )
 from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, StageReview, WorkspaceEvent
+from review_gate.generated_chain_resolver import GeneratedChainResolver
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
     AssessmentSummaryDTO,
@@ -98,6 +95,10 @@ class ReviewFlowService:
         self._assessment_client = assessment_client or AssessmentAgentClient.for_testing()
         self._assessment_synthesizer = AssessmentSynthesizer()
         self._store = store
+        self._generated_chain_resolver = GeneratedChainResolver(store=store) if store is not None else None
+        self._answer_checkpoint_writer = (
+            AnswerCheckpointWriter(store=store, synthesizer=self._assessment_synthesizer) if store is not None else None
+        )
         self._stage_mastery_status: dict[tuple[str, str], str] = {}
         self._latest_assessments: dict[tuple[str, str], dict] = {}
         if self._store is not None:
@@ -450,105 +451,26 @@ class ReviewFlowService:
         self._latest_assessments[(request.project_id, request.stage_id)] = assessment
 
         if self._store is not None:
-            self._store.insert_workflow_request(
-                WorkflowRequestRecord(
-                    request_id=request.request_id,
-                    request_type="assessment",
-                    project_id=request.project_id,
-                    stage_id=request.stage_id,
-                    requested_by=request.actor_id,
-                    source=request.source_page,
-                    status="completed",
-                    created_at=request.created_at,
-                    payload={"request_id": request.request_id},
-                )
-            )
-            workflow_run_id, question_batch_id, storage_question_id = self._resolve_submit_question_chain(
-                request=request,
-                current_question=current_question,
-            )
-            answer_batch_id = f"ab-{request.request_id}"
-            evaluation_batch_id = f"eb-{request.request_id}"
-            evaluation_item_id = f"ei-{request.request_id}-0"
-            answer_item_id = f"ai-{request.request_id}-0"
-            evidence_spans = self._build_evidence_spans(
-                evaluation_item_id=evaluation_item_id,
-                answer_item_id=answer_item_id,
-                evidence=list(assessment_response["assessment"].get("evidence", [])),
-                created_at=request.created_at,
-                request_id=request.request_id,
-            )
-            evaluation_item = EvaluationItemRecord(
-                evaluation_item_id=evaluation_item_id,
-                evaluation_batch_id=evaluation_batch_id,
-                question_id=storage_question_id,
-                answer_item_id=answer_item_id,
-                local_verdict=verdict,
-                confidence=float(assessment_response.get("confidence", 0.0)),
-                status="completed",
-                evaluated_at=request.created_at,
-                payload={
-                    "reasoned_summary": f"Assessment verdict {verdict} for {request.question_id}.",
-                    "diagnosed_gaps": list(assessment.get("core_gaps", [])),
-                    "dimension_refs": list(assessment.get("dimension_hits", [])),
-                    "evidence_span_ids": [span.evidence_span_id for span in evidence_spans],
-                },
-            )
-            evaluation_batch = EvaluationBatchRecord(
-                evaluation_batch_id=evaluation_batch_id,
-                answer_batch_id=answer_batch_id,
-                workflow_run_id=workflow_run_id,
+            writer_assessment = {
+                "verdict": verdict,
+                "score": float(assessment_response.get("confidence", 0.0)),
+                "summary": f"Assessment verdict {verdict} for {request.question_id}.",
+                "gaps": list(assessment.get("core_gaps", [])),
+                "dimensions": list(assessment.get("dimension_hits", [])),
+            }
+            resolved_chain = self._generated_chain_resolver.resolve(
                 project_id=request.project_id,
                 stage_id=request.stage_id,
-                evaluated_by="assessment_agent",
-                evaluator_version="review_flow_service:first-checkpoint",
-                confidence=float(assessment_response.get("confidence", 0.0)),
-                status="completed",
-                evaluated_at=request.created_at,
-                supersedes_evaluation_batch_id=None,
-                payload={"request_id": request.request_id},
+                question_set_id=request.question_set_id,
+                transport_question_id=request.question_id,
+                request_id=request.request_id,
+                created_at=request.created_at,
             )
-            fact_batch, fact_items = self._assessment_synthesizer.synthesize(
-                workflow_run_id=workflow_run_id,
-                evaluation_batch=evaluation_batch,
-                evaluation_items=[evaluation_item],
-                evidence_spans=evidence_spans,
+            self._answer_checkpoint_writer.write(
+                request=request,
+                resolved_chain=resolved_chain,
+                assessment=writer_assessment,
             )
-            self._store.insert_answer_batch(
-                AnswerBatchRecord(
-                    answer_batch_id=answer_batch_id,
-                    question_batch_id=question_batch_id,
-                    workflow_run_id=workflow_run_id,
-                    submitted_by=request.actor_id,
-                    submission_mode="single_submit",
-                    completion_status="complete",
-                    submitted_at=request.created_at,
-                    status="submitted",
-                    payload={"request_id": request.request_id},
-                )
-            )
-            self._store.insert_answer_items(
-                [
-                    AnswerItemRecord(
-                        answer_item_id=answer_item_id,
-                        answer_batch_id=answer_batch_id,
-                        question_id=storage_question_id,
-                        answered_by=request.actor_id,
-                        answer_text=request.answer_text,
-                        answer_format="plain_text",
-                        order_index=0,
-                        answered_at=request.created_at,
-                        status="answered",
-                        revision_of_answer_item_id=None,
-                        payload={"answer_excerpt": answer_excerpt},
-                    )
-                ]
-            )
-            self._store.insert_evaluation_batch(evaluation_batch)
-            self._store.insert_evaluation_items([evaluation_item])
-            self._store.insert_evidence_spans(evidence_spans)
-            self._store.insert_assessment_fact_batch(fact_batch)
-            self._store.insert_assessment_fact_items(fact_items)
             self._store.upsert_answer_fact(
                 AnswerFact(
                     answer_id=answer_id,
@@ -701,129 +623,11 @@ class ReviewFlowService:
                 )
             )
 
-    def _resolve_submit_question_chain(
-        self,
-        *,
-        request: SubmitAnswerRequest,
-        current_question: CurrentQuestionContext,
-    ) -> tuple[str, str, str]:
-        existing_chain = self._find_existing_generated_question_chain(
-            project_id=request.project_id,
-            stage_id=request.stage_id,
-            question_set_id=request.question_set_id,
-            question_id=request.question_id,
-        )
-        if existing_chain is not None:
-            return existing_chain
-        return self._persist_submit_question_chain_backfill(request=request, current_question=current_question)
-
-    def _find_existing_generated_question_chain(
-        self,
-        *,
-        project_id: str,
-        stage_id: str,
-        question_set_id: str,
-        question_id: str,
-    ) -> tuple[str, str, str] | None:
-        if self._store is None:
-            return None
-        mapping = self._find_latest_generated_question_set_event(
-            project_id=project_id,
-            stage_id=stage_id,
-            question_set_id=question_set_id,
-        )
-        if mapping is None:
-            return None
-        question_batch = self._store.get_question_batch(str(mapping.get("question_batch_id", "")).strip())
-        if question_batch is None:
-            return None
-        workflow_run = self._store.get_workflow_run(question_batch.workflow_run_id)
-        if workflow_run is None:
-            return None
-        question_items = self._store.list_question_items(question_batch.question_batch_id)
-        for item in question_items:
-            if item.payload.get("transport_question_id") == question_id or item.question_id == question_id:
-                return question_batch.workflow_run_id, question_batch.question_batch_id, item.question_id
-        return None
-
-    def _persist_submit_question_chain_backfill(
-        self,
-        *,
-        request: SubmitAnswerRequest,
-        current_question: CurrentQuestionContext,
-    ) -> tuple[str, str, str]:
-        workflow_run_id = f"run-{request.request_id}"
-        question_batch_id = f"qb-{request.request_id}"
-        storage_question_id = f"{request.request_id}-{request.question_id}"
-        self._store.insert_workflow_run(
-            WorkflowRunRecord(
-                run_id=workflow_run_id,
-                request_id=request.request_id,
-                run_type="assessment",
-                status="completed",
-                started_at=request.created_at,
-                finished_at=request.created_at,
-                supersedes_run_id=None,
-                payload={"request_id": request.request_id},
-            )
-        )
-        self._store.insert_question_batch(
-            QuestionBatchRecord(
-                question_batch_id=question_batch_id,
-                workflow_run_id=workflow_run_id,
-                project_id=request.project_id,
-                stage_id=request.stage_id,
-                generated_by="review_flow_service",
-                source=request.source_page,
-                batch_goal=self._get_stage_definition(request.project_id, request.stage_id)["stage_goal"],
-                entry_question_id=storage_question_id,
-                status="active",
-                created_at=request.created_at,
-                payload={"question_count": 1, "request_id": request.request_id},
-            )
-        )
-        self._store.insert_question_items(
-            [
-                QuestionItemRecord(
-                    question_id=storage_question_id,
-                    question_batch_id=question_batch_id,
-                    question_type=current_question.question_level,
-                    prompt=current_question.question_prompt,
-                    intent=current_question.question_intent,
-                    difficulty_level=current_question.question_level,
-                    order_index=0,
-                    status="ready",
-                    created_at=request.created_at,
-                    payload={
-                        "expected_signals": current_question.expected_signals,
-                        "source_context": current_question.source_context,
-                        "transport_question_id": request.question_id,
-                    },
-                )
-            ]
-        )
-        return workflow_run_id, question_batch_id, storage_question_id
-
     def _resolve_stage_question_set_id(self, *, project_id: str, stage_id: str) -> str:
         stage = self._get_stage_review(project_id, stage_id)
         if stage is not None and stage.active_question_set_id:
             return stage.active_question_set_id
         return str(self._get_stage_definition(project_id, stage_id).get("active_question_set_id", ""))
-
-    def _find_latest_generated_question_set_event(self, *, project_id: str, stage_id: str, question_set_id: str) -> dict | None:
-        if self._store is None:
-            return None
-        events = self._store.list_events(project_id=project_id)
-        latest_payload: dict | None = None
-        for event in events:
-            if event.event_type != "question_set_generated":
-                continue
-            if str(event.payload.get("stage_id", "")) != stage_id:
-                continue
-            if str(event.payload.get("question_set_id", "")) != question_set_id:
-                continue
-            latest_payload = dict(event.payload)
-        return latest_payload
 
     def _next_question_set_generation_index(self, *, project_id: str, stage_id: str, question_set_id: str) -> int:
         if self._store is None:
@@ -857,34 +661,6 @@ class ReviewFlowService:
         if raw_question_id.startswith(f"{question_set_id}-"):
             return raw_question_id
         return f"{question_set_id}-{raw_question_id}"
-
-    def _build_evidence_spans(
-        self,
-        *,
-        evaluation_item_id: str,
-        answer_item_id: str,
-        evidence: list[str],
-        created_at: str,
-        request_id: str,
-    ) -> list[EvidenceSpanRecord]:
-        spans: list[EvidenceSpanRecord] = []
-        for index, item in enumerate(evidence):
-            content = str(item)
-            spans.append(
-                EvidenceSpanRecord(
-                    evidence_span_id=f"es-{request_id}-{index}",
-                    evaluation_item_id=evaluation_item_id,
-                    answer_item_id=answer_item_id,
-                    span_type="quoted_text",
-                    supports_dimension="assessment",
-                    content=content,
-                    start_offset=0 if content else None,
-                    end_offset=len(content) if content else None,
-                    created_at=created_at,
-                    payload={"evidence_index": index},
-                )
-            )
-        return spans
 
     def _derive_dimension_hits(self, assessment: dict) -> list[str]:
         dimension_scores = assessment.get("dimension_scores", {})
