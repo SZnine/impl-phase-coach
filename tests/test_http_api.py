@@ -377,6 +377,36 @@ def test_create_default_workspace_api_persists_profile_space_between_instances(t
     assert mistakes_view.total_count == 1
 
 
+def test_create_default_workspace_api_initializes_first_checkpoint_tables_on_fresh_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "fresh" / "workbench.sqlite3"
+
+    assert not db_path.exists()
+
+    api = create_default_workspace_api(db_path)
+    response = api.submit_answer_action(
+        SubmitAnswerRequest(
+            request_id="req-fresh-db",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-03T00:00:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="This answer is long enough to avoid the weak fallback verdict.",
+            draft_id=None,
+        )
+    )
+
+    stage_view = api.get_stage_view("proj-1", "stage-1")
+
+    assert response.success is True
+    assert db_path.exists()
+    assert stage_view.knowledge_summary is not None
+    assert stage_view.knowledge_summary.knowledge_entry_count == 1
+    assert stage_view.knowledge_summary.mistake_count == 1
+
+
 
 def test_create_default_workspace_api_persists_proposals_between_instances(tmp_path: Path) -> None:
     db_path = tmp_path / "workbench.sqlite3"
