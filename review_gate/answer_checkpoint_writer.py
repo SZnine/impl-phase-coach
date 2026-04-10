@@ -10,6 +10,8 @@ from review_gate.checkpoint_models import (
     AnswerItemRecord,
     EvaluationBatchRecord,
     EvaluationItemRecord,
+    WorkflowRequestRecord,
+    WorkflowRunRecord,
 )
 from review_gate.generated_chain_resolver import ResolvedQuestionChain
 from review_gate.storage_sqlite import SQLiteStore
@@ -37,15 +39,40 @@ class AnswerCheckpointWriter:
         assessment: dict[str, Any],
     ) -> CheckpointWriteResult:
         confidence = float(assessment.get("score", 0.0))
+        submit_workflow_request = WorkflowRequestRecord(
+            request_id=request.request_id,
+            request_type="assessment",
+            project_id=request.project_id,
+            stage_id=request.stage_id,
+            requested_by=request.actor_id,
+            source=request.source_page,
+            status="completed",
+            created_at=request.created_at,
+            payload={"request_id": request.request_id},
+        )
+        submit_workflow_run_id = f"run-{request.request_id}"
+        submit_workflow_run = WorkflowRunRecord(
+            run_id=submit_workflow_run_id,
+            request_id=request.request_id,
+            run_type="assessment",
+            status="completed",
+            started_at=request.created_at,
+            finished_at=request.created_at,
+            supersedes_run_id=None,
+            payload={"request_id": request.request_id},
+        )
         answer_batch_id = f"ab-{request.request_id}"
         answer_item_id = f"ai-{request.request_id}-0"
         evaluation_batch_id = f"eb-{request.request_id}"
         evaluation_item_id = f"ei-{request.request_id}-0"
 
+        self._store.insert_workflow_request(submit_workflow_request)
+        self._store.insert_workflow_run(submit_workflow_run)
+
         answer_batch = AnswerBatchRecord(
             answer_batch_id=answer_batch_id,
             question_batch_id=resolved_chain.question_batch_id,
-            workflow_run_id=resolved_chain.workflow_run_id,
+            workflow_run_id=submit_workflow_run_id,
             submitted_by=request.actor_id,
             submission_mode="single_submit",
             completion_status="complete",
@@ -77,7 +104,7 @@ class AnswerCheckpointWriter:
         evaluation_batch = EvaluationBatchRecord(
             evaluation_batch_id=evaluation_batch_id,
             answer_batch_id=answer_batch_id,
-            workflow_run_id=resolved_chain.workflow_run_id,
+            workflow_run_id=submit_workflow_run_id,
             project_id=request.project_id,
             stage_id=request.stage_id,
             evaluated_by="assessment_agent",
@@ -115,7 +142,7 @@ class AnswerCheckpointWriter:
         self._store.insert_evaluation_items([evaluation_item])
 
         fact_batch, fact_items = self._synthesizer.synthesize(
-            workflow_run_id=resolved_chain.workflow_run_id,
+            workflow_run_id=submit_workflow_run_id,
             evaluation_batch=evaluation_batch,
             evaluation_items=[evaluation_item],
             evidence_spans=[],
@@ -124,7 +151,7 @@ class AnswerCheckpointWriter:
         self._store.insert_assessment_fact_items(fact_items)
 
         return CheckpointWriteResult(
-            workflow_run_id=resolved_chain.workflow_run_id,
+            workflow_run_id=submit_workflow_run_id,
             question_batch_id=resolved_chain.question_batch_id,
             answer_batch_id=answer_batch_id,
             evaluation_batch_id=evaluation_batch_id,

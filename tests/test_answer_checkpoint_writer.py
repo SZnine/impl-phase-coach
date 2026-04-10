@@ -131,16 +131,37 @@ def test_answer_checkpoint_writer_persists_submit_chain(tmp_path: Path) -> None:
     )
 
     assert result == CheckpointWriteResult(
-        workflow_run_id="run-req-qgen-1",
+        workflow_run_id="run-req-submit-1",
         question_batch_id="qb-req-qgen-1",
         answer_batch_id="ab-req-submit-1",
         evaluation_batch_id="eb-req-submit-1",
         assessment_fact_batch_id="afb-eb-req-submit-1",
     )
+    assert store.get_workflow_request("req-submit-1") == WorkflowRequestRecord(
+        request_id="req-submit-1",
+        request_type="assessment",
+        project_id="proj-1",
+        stage_id="stage-1",
+        requested_by="local-user",
+        source="question_detail",
+        status="completed",
+        created_at="2026-04-10T11:00:00Z",
+        payload={"request_id": "req-submit-1"},
+    )
+    assert store.get_workflow_run("run-req-submit-1") == WorkflowRunRecord(
+        run_id="run-req-submit-1",
+        request_id="req-submit-1",
+        run_type="assessment",
+        status="completed",
+        started_at="2026-04-10T11:00:00Z",
+        finished_at="2026-04-10T11:00:00Z",
+        supersedes_run_id=None,
+        payload={"request_id": "req-submit-1"},
+    )
     assert store.get_answer_batch("ab-req-submit-1") == AnswerBatchRecord(
         answer_batch_id="ab-req-submit-1",
         question_batch_id="qb-req-qgen-1",
-        workflow_run_id="run-req-qgen-1",
+        workflow_run_id="run-req-submit-1",
         submitted_by="local-user",
         submission_mode="single_submit",
         completion_status="complete",
@@ -174,7 +195,7 @@ def test_answer_checkpoint_writer_persists_submit_chain(tmp_path: Path) -> None:
     assert store.get_evaluation_batch("eb-req-submit-1") == EvaluationBatchRecord(
         evaluation_batch_id="eb-req-submit-1",
         answer_batch_id="ab-req-submit-1",
-        workflow_run_id="run-req-qgen-1",
+        workflow_run_id="run-req-submit-1",
         project_id="proj-1",
         stage_id="stage-1",
         evaluated_by="assessment_agent",
@@ -210,7 +231,7 @@ def test_answer_checkpoint_writer_persists_submit_chain(tmp_path: Path) -> None:
     assert store.get_latest_assessment_fact_batch("proj-1", "stage-1") == AssessmentFactBatchRecord(
         assessment_fact_batch_id="afb-eb-req-submit-1",
         evaluation_batch_id="eb-req-submit-1",
-        workflow_run_id="run-req-qgen-1",
+        workflow_run_id="run-req-submit-1",
         synthesized_by="assessment_synthesizer",
         synthesizer_version="first-checkpoint-v1",
         status="completed",
@@ -265,6 +286,27 @@ def test_answer_checkpoint_writer_uses_assessment_synthesizer_for_multiple_gaps(
     )
 
     assert result.assessment_fact_batch_id == "afb-eb-req-submit-2"
+    assert store.get_workflow_request("req-submit-2") == WorkflowRequestRecord(
+        request_id="req-submit-2",
+        request_type="assessment",
+        project_id="proj-1",
+        stage_id="stage-1",
+        requested_by="local-user",
+        source="question_detail",
+        status="completed",
+        created_at="2026-04-10T11:05:00Z",
+        payload={"request_id": "req-submit-2"},
+    )
+    assert store.get_workflow_run("run-req-submit-2") == WorkflowRunRecord(
+        run_id="run-req-submit-2",
+        request_id="req-submit-2",
+        run_type="assessment",
+        status="completed",
+        started_at="2026-04-10T11:05:00Z",
+        finished_at="2026-04-10T11:05:00Z",
+        supersedes_run_id=None,
+        payload={"request_id": "req-submit-2"},
+    )
     assert store.list_assessment_fact_items("afb-eb-req-submit-2") == [
         AssessmentFactItemRecord(
             assessment_fact_item_id="afi-ei-req-submit-2-0-proposal-execution-separation",
