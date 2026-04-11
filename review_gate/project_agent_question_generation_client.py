@@ -5,7 +5,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
-from urllib import request as urllib_request
+
+import requests
 
 from review_gate.project_agent_prompt_builder import ProjectAgentPromptBuilder
 
@@ -51,6 +52,7 @@ class ProjectAgentQuestionGenerationClient:
                 {"role": "user", "content": prompt_package.user_prompt},
             ],
             "response_format": {"type": "json_object"},
+            "stream": True,
         }
         headers = {
             "Authorization": f"Bearer {self._runtime_config.api_key}",
@@ -141,8 +143,34 @@ class ProjectAgentQuestionGenerationClient:
 
     @staticmethod
     def _default_transport(url: str, headers: Mapping[str, str], payload: dict[str, Any]) -> dict[str, Any]:
-        encoded = json.dumps(payload).encode("utf-8")
-        req = urllib_request.Request(url=url, data=encoded, headers=dict(headers), method="POST")
-        with urllib_request.urlopen(req, timeout=30) as response:
-            body = response.read().decode("utf-8")
-        return json.loads(body)
+        response = requests.post(
+            url,
+            headers=dict(headers),
+            json=payload,
+            timeout=30,
+            stream=bool(payload.get("stream")),
+        )
+        response.raise_for_status()
+
+        if payload.get("stream"):
+            raw_content = ""
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                decoded = line.decode("utf-8", errors="replace").strip()
+                if not decoded.startswith("data: "):
+                    continue
+                data_str = decoded[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    delta = chunk["choices"][0].get("delta", {})
+                    content = delta.get("content")
+                    if content:
+                        raw_content += content
+                except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                    continue
+            return {"choices": [{"message": {"content": raw_content}}]}
+
+        return response.json()
