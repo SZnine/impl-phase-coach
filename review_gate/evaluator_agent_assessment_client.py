@@ -43,10 +43,9 @@ class EvaluatorAgentAssessmentClient:
         payload: dict[str, Any] = {
             "model": self._runtime_config.model,
             "messages": request["messages"],
+            "response_format": request.get("response_format", {"type": "json_object"}),
             "stream": True,
         }
-        if "response_format" in request:
-            payload["response_format"] = request["response_format"]
 
         headers = {
             "Authorization": f"Bearer {self._runtime_config.api_key}",

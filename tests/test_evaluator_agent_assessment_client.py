@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import requests
+
 from review_gate.evaluator_agent_assessment_client import (
     EvaluatorAgentAssessmentClient,
     EvaluatorAgentRuntimeConfig,
@@ -92,9 +94,113 @@ def test_evaluator_agent_client_builds_openai_compatible_request_and_returns_raw
     payload = seen["payload"]
     assert isinstance(payload, dict)
     assert payload["model"] == "gpt-5.4"
+    assert payload["response_format"] == {"type": "json_object"}
     assert payload["stream"] is True
     assert response["request_id"] == "req-1"
     assert response["provider"] == "openai_compatible"
     assert response["model"] == "gpt-5.4"
     assert response["raw_content"] == '{"assessment":{"verdict":"partial","score_total":0.72}}'
     assert response["raw_response"]["choices"][0]["message"]["content"] == response["raw_content"]
+
+
+def test_evaluator_agent_client_defaults_response_format_to_json_object() -> None:
+    seen: dict[str, object] = {}
+
+    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object]) -> dict[str, object]:
+        seen["payload"] = payload
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"assessment":{"verdict":"partial","score_total":0.72}}'
+                    }
+                }
+            ]
+        }
+
+    client = _build_test_client(transport=fake_transport)
+
+    client.assess(
+        {
+            "request_id": "req-2",
+            "messages": [
+                {"role": "system", "content": "You are the Evaluator Agent."},
+                {"role": "user", "content": "Assess the answer."},
+            ],
+        }
+    )
+
+    payload = seen["payload"]
+    assert isinstance(payload, dict)
+    assert payload["response_format"] == {"type": "json_object"}
+
+
+def test_evaluator_agent_client_extracts_list_text_content_fragments() -> None:
+    raw_content = EvaluatorAgentAssessmentClient._extract_message_content(
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": [
+                            {"type": "text", "text": '{"assessment":'},
+                            {"type": "tool_call", "text": "ignored"},
+                            {"type": "text", "text": '{"verdict":"partial"}}'},
+                        ]
+                    }
+                }
+            ]
+        }
+    )
+
+    assert raw_content == '{"assessment":{"verdict":"partial"}}'
+
+
+def test_evaluator_agent_client_default_transport_assembles_streamed_content(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_lines(self):
+            return iter(
+                [
+                    b'data: {"choices":[{"delta":{"content":"{\\"assessment\\":"}}]}',
+                    b'data: {"choices":[{"delta":{"content":"{\\"verdict\\":\\"partial\\"}"}}]}',
+                    b'data: {"choices":[{"delta":{"content":"}"}}]}',
+                    b"data: [DONE]",
+                ]
+            )
+
+        def json(self) -> dict[str, object]:
+            raise AssertionError("json() should not be called for streamed responses")
+
+    captured: dict[str, object] = {}
+
+    def fake_post(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeResponse()
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    response = EvaluatorAgentAssessmentClient._default_transport(
+        "https://example.test/v1/chat/completions",
+        {"Authorization": "Bearer test-key", "Content-Type": "application/json"},
+        {
+            "model": "gpt-5.4",
+            "messages": [{"role": "user", "content": "Assess the answer."}],
+            "response_format": {"type": "json_object"},
+            "stream": True,
+        },
+    )
+
+    assert captured["args"] == ("https://example.test/v1/chat/completions",)
+    assert captured["kwargs"]["stream"] is True
+    assert response == {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"assessment":{"verdict":"partial"}}'
+                }
+            }
+        ]
+    }
