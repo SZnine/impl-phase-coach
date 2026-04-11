@@ -27,7 +27,9 @@ class QuestionSetGenerationPublisher:
         workflow_run_id: str,
         question_item_ids: list[str],
         created_at: str,
-    ) -> PublishedQuestionSetGeneration:
+    ) -> PublishedQuestionSetGeneration | None:
+        if not question_set_id:
+            return None
         generation_index = self._next_question_set_generation_index(
             project_id=project_id,
             stage_id=stage_id,

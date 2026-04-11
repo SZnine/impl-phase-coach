@@ -132,3 +132,23 @@ def test_question_set_generation_publisher_preserves_event_shape_and_key_fields(
         "question_item_ids": ["req-qgen-1-q-1", "req-qgen-1-q-2"],
     }
     assert store.get_event("evt-question-set-generated-00000001-req-qgen-1") == published.event
+
+
+def test_question_set_generation_publisher_skips_empty_question_set_id(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    publisher = QuestionSetGenerationPublisher(store=store)
+
+    published = publisher.publish(
+        request_id="req-empty",
+        project_id="proj-1",
+        stage_id="stage-1",
+        question_set_id="",
+        question_batch_id="qb-req-empty",
+        workflow_run_id="run-req-empty",
+        question_item_ids=["req-empty-q-1"],
+        created_at="2026-04-10T10:10:00Z",
+    )
+
+    assert published is None
+    assert store.list_events("proj-1") == []
