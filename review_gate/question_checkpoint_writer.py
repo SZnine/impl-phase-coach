@@ -35,7 +35,9 @@ class QuestionCheckpointWriter:
         created_at = str(request.get("created_at", ""))
         workflow_run_id = f"run-{request_id}"
         question_batch_id = f"qb-{request_id}"
-        questions = list(response.get("questions", []))
+        questions = response.get("questions")
+        if not isinstance(questions, list) or not questions:
+            raise ValueError("response['questions'] must contain at least one question")
 
         self._store.insert_workflow_request(
             WorkflowRequestRecord(
@@ -45,7 +47,7 @@ class QuestionCheckpointWriter:
                 stage_id=str(request["stage_id"]),
                 requested_by="question_generation_client",
                 source="review_flow_service",
-                status="completed",
+                status="in_progress",
                 created_at=created_at,
                 payload={"request": dict(request)},
             )
@@ -55,7 +57,7 @@ class QuestionCheckpointWriter:
                 run_id=workflow_run_id,
                 request_id=request_id,
                 run_type="question_cycle",
-                status="completed",
+                status="in_progress",
                 started_at=created_at,
                 finished_at=created_at,
                 supersedes_run_id=None,
@@ -106,6 +108,32 @@ class QuestionCheckpointWriter:
             )
         )
         self._store.insert_question_items(question_items)
+
+        self._store.insert_workflow_request(
+            WorkflowRequestRecord(
+                request_id=request_id,
+                request_type="question_cycle",
+                project_id=str(request["project_id"]),
+                stage_id=str(request["stage_id"]),
+                requested_by="question_generation_client",
+                source="review_flow_service",
+                status="completed",
+                created_at=created_at,
+                payload={"request": dict(request)},
+            )
+        )
+        self._store.insert_workflow_run(
+            WorkflowRunRecord(
+                run_id=workflow_run_id,
+                request_id=request_id,
+                run_type="question_cycle",
+                status="completed",
+                started_at=created_at,
+                finished_at=created_at,
+                supersedes_run_id=None,
+                payload={"question_count": len(question_items), "request_id": request_id},
+            )
+        )
 
         return PersistedQuestionGeneration(
             workflow_run_id=workflow_run_id,
