@@ -52,18 +52,26 @@ class EvaluatorAgentPromptBuilder:
         )
 
         output_contract = {
-            "verdict": "pass|continue_probing|redirect_to_learning",
-            "dimension_scores": {
-                "correctness": "0-5",
-                "reasoning": "0-5",
-                "decision_awareness": "0-5",
-                "boundary_awareness": "0-5",
-                "stability": "0-5",
+            "request_id": "string",
+            "assessment": {
+                "score_total": "0-1",
+                "dimension_scores": {
+                    "correctness": "0-5",
+                    "reasoning": "0-5",
+                    "decision_awareness": "0-5",
+                    "boundary_awareness": "0-5",
+                    "stability": "0-5",
+                },
+                "verdict": "pass|continue_probing|redirect_to_learning",
+                "core_gaps": ["string"],
+                "misconceptions": ["string"],
+                "evidence": ["string"],
             },
-            "core_gaps": ["string"],
-            "misconceptions": ["string"],
-            "evidence": ["string"],
             "recommended_action": "string",
+            "recommended_follow_up_questions": ["string"],
+            "learning_recommendations": ["string"],
+            "warnings": ["string"],
+            "confidence": "0-1",
         }
 
         return EvaluatorAgentPromptPackage(
