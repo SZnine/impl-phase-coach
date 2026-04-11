@@ -18,6 +18,8 @@ class ProjectAgentPromptBuilder:
         "Include mid-level design and implementation questions about boundaries, persistence, migration, and trade-offs.",
         "Include higher-level trade-off or failure-mode questions that test reasoning under change or risk.",
         "Do not generate a question set made only of abstract architecture prompts.",
+        "Do not let all questions collapse into the same difficulty or the same category when max_questions allows variety.",
+        "Use concrete module, persistence, migration, id-boundary, or failure-mode references whenever the current project context supports them.",
     )
 
     def build(self, request: Mapping[str, Any]) -> ProjectAgentPromptPackage:
@@ -57,7 +59,14 @@ class ProjectAgentPromptBuilder:
             "- Include at least one interview-style fundamentals question.",
             "- Include at least one mid-level design or implementation question when max_questions >= 3.",
             "- Include at least one higher-level trade-off or failure-mode question when max_questions >= 4.",
+            "- Use at least one concrete module name, persistence concern, migration boundary, or compatibility risk from the current project context when possible.",
+            "- Make at least one question something a real backend/system-design interviewer could directly ask in an interview.",
+            "- Avoid letting every question sit at the same layer of abstraction.",
             "- Avoid making the entire set abstract.",
+            "Bad output examples to avoid:",
+            "- A set where every question is a generic architecture question.",
+            "- A set where every question is effectively the same 'explain the design' prompt.",
+            "- A set with no fundamentals question and no migration/failure-mode question.",
         ]
 
         output_contract = {

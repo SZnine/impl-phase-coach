@@ -861,6 +861,71 @@ def test_generate_question_set_normalizes_project_agent_output_and_persists_chec
     assert store.list_question_items("qb-req-qgen-llm-1")[0].payload["transport_question_id"] == "set-1-q-1"
 
 
+def test_generate_question_set_preserves_mixed_levels_from_project_agent_quality_signals(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    question_set = _semantic_question_set()
+    store.upsert_question_set(question_set)
+    service = ReviewFlowService(
+        question_generation_client=RawProjectAgentQuestionGenerationClient(
+            raw_content="""
+            {
+              "questions": [
+                {
+                  "id": "fundamentals-1",
+                  "category": "interview_fundamentals",
+                  "difficulty": "basic",
+                  "prompt": "What is the difference between append-only records and mutable current state?"
+                },
+                {
+                  "id": "design-1",
+                  "difficulty": "basic",
+                  "prompt": "Why do we keep transport ids separate from durable ids in the checkpoint path?"
+                },
+                {
+                  "id": "risk-1",
+                  "category": "failure_mode",
+                  "difficulty": "basic",
+                  "prompt": "What migration risk appears if malformed LLM output reaches persisted checkpoint records?"
+                }
+              ],
+              "generation_summary": "Generated 3 mixed questions.",
+              "coverage_notes": ["project-grounded", "fundamentals", "failure-mode"],
+              "warnings": [],
+              "confidence": 0.93
+            }
+            """
+        ),
+        project_agent_response_normalizer=ProjectAgentResponseNormalizer(),
+        store=store,
+    )
+
+    response = service.generate_question_set(
+        {
+            "request_id": "req-qgen-llm-quality-1",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "project-agent-quality-tuning",
+            "stage_goal": "improve project grounding and level spread",
+            "stage_summary": "quality regression for project agent output shaping",
+            "current_decisions": ["keep checkpoint chain stable"],
+            "key_logic_points": ["normalization before persistence"],
+            "known_weak_points": ["level collapse"],
+            "boundary_focus": ["project-grounded vs interview fundamentals", "risk escalation"],
+            "question_strategy": "full_depth",
+            "max_questions": 3,
+            "source_refs": ["docs/spec.md"],
+        }
+    )
+
+    assert [item["question_level"] for item in response["questions"]] == ["core", "why", "abstract"]
+    assert [item.question_type for item in store.list_question_items("qb-req-qgen-llm-quality-1")] == [
+        "core",
+        "why",
+        "abstract",
+    ]
+
+
 def test_generate_question_set_rejects_invalid_project_agent_output_before_checkpoint_write(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()

@@ -12,6 +12,52 @@ class ProjectAgentResponseNormalizer:
         "intermediate": "why",
         "advanced": "abstract",
     }
+    _CATEGORY_TO_LEVEL = {
+        "project_grounded": "why",
+        "interview_fundamentals": "core",
+        "fundamentals": "core",
+        "implementation_design": "why",
+        "design": "why",
+        "tradeoff_failure_mode": "abstract",
+        "failure_mode": "abstract",
+        "tradeoff": "abstract",
+    }
+    _ABSTRACT_SIGNAL_PATTERNS = (
+        r"\bfailure[\s-]?mode\b",
+        r"\brisk\b",
+        r"\bunder change\b",
+        r"\bgeneraliz",
+        r"\bdetect\b",
+        r"\bcorrupt",
+        r"\bwhat breaks\b",
+        r"\bmigration risk\b",
+    )
+    _WHY_SIGNAL_PATTERNS = (
+        r"\bwhy\b",
+        r"\bboundary\b",
+        r"\bseparate\b",
+        r"\bsplit\b",
+        r"\bprotect\b",
+        r"\bmigration\b",
+        r"\btrade[\s-]?off\b",
+        r"\bnormalize\b",
+        r"\bpersist",
+        r"\borchestration\b",
+        r"\bmodule\b",
+        r"\binterface\b",
+    )
+    _CORE_SIGNAL_PATTERNS = (
+        r"\bwhat is\b",
+        r"\bdifference between\b",
+        r"\bappend-only\b",
+        r"\bmutable current state\b",
+        r"\bforeign keys\b",
+        r"\blogical references?\b",
+        r"\bdurable ids?\b",
+        r"\btransport ids?\b",
+        r"\bwhat does\b",
+        r"\bdefine\b",
+    )
 
     _LEVEL_DEFAULT_INTENT = {
         "core": "Check project-grounded understanding.",
@@ -97,17 +143,49 @@ class ProjectAgentResponseNormalizer:
         if explicit_level in {"core", "why", "abstract"}:
             return explicit_level
 
+        category = str(item.get("category", "")).strip().lower()
+        if category in self._CATEGORY_TO_LEVEL:
+            return self._CATEGORY_TO_LEVEL[category]
+
+        content_level = self._infer_question_level_from_content(item)
+        if content_level:
+            return content_level
+
         difficulty = str(item.get("difficulty", "")).strip().lower()
         if difficulty in self._DIFFICULTY_TO_LEVEL:
             return self._DIFFICULTY_TO_LEVEL[difficulty]
 
         return "core"
 
+    def _infer_question_level_from_content(self, item: Mapping[str, Any]) -> str | None:
+        text = " ".join(
+            [
+                str(item.get("prompt", "")),
+                str(item.get("intent", "")),
+                " ".join(self._coerce_str_list(item.get("expected_signals"))),
+                " ".join(self._coerce_str_list(item.get("source_context"))),
+            ]
+        ).strip().lower()
+        if not text:
+            return None
+
+        if self._matches_any_pattern(text, self._ABSTRACT_SIGNAL_PATTERNS):
+            return "abstract"
+        if self._matches_any_pattern(text, self._WHY_SIGNAL_PATTERNS):
+            return "why"
+        if self._matches_any_pattern(text, self._CORE_SIGNAL_PATTERNS):
+            return "core"
+        return None
+
     def _normalize_question_id(self, *, item: Mapping[str, Any], index: int) -> str:
         raw_question_id = str(item.get("question_id") or item.get("id") or "").strip().lower()
         if self._CANONICAL_QUESTION_ID_PATTERN.fullmatch(raw_question_id):
             return raw_question_id
         return f"q-{index}"
+
+    @staticmethod
+    def _matches_any_pattern(text: str, patterns: tuple[str, ...]) -> bool:
+        return any(re.search(pattern, text) for pattern in patterns)
 
     @staticmethod
     def _coerce_str_list(value: Any) -> list[str]:

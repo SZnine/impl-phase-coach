@@ -24,6 +24,8 @@ def test_project_agent_prompt_builder_includes_mixed_question_rules() -> None:
     assert "mid-level design and implementation questions" in prompt.system_prompt
     assert "higher-level trade-off or failure-mode questions" in prompt.system_prompt
     assert "Do not generate a question set made only of abstract architecture prompts." in prompt.system_prompt
+    assert "Do not let all questions collapse into the same difficulty or the same category" in prompt.system_prompt
+    assert "Use concrete module, persistence, migration, id-boundary, or failure-mode references" in prompt.system_prompt
 
 
 def test_project_agent_prompt_builder_carries_stage_context_into_user_prompt() -> None:
@@ -48,6 +50,32 @@ def test_project_agent_prompt_builder_carries_stage_context_into_user_prompt() -
     assert "Stage goal: make question generation more realistic" in prompt.user_prompt
     assert "- Include at least one project-grounded question." in prompt.user_prompt
     assert "- Include at least one interview-style fundamentals question." in prompt.user_prompt
+    assert "- Make at least one question something a real backend/system-design interviewer could directly ask in an interview." in prompt.user_prompt
+    assert "- Avoid letting every question sit at the same layer of abstraction." in prompt.user_prompt
+
+
+def test_project_agent_prompt_builder_includes_bad_output_examples_to_avoid() -> None:
+    builder = ProjectAgentPromptBuilder()
+
+    prompt = builder.build(
+        {
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "project-agent-quality-tuning",
+            "stage_goal": "improve project grounding and interview realism",
+            "stage_summary": "project agent is live but question quality is still uneven",
+            "current_decisions": ["project agent is provider-backed"],
+            "key_logic_points": ["question taxonomy", "normalization stability"],
+            "known_weak_points": ["level collapse"],
+            "boundary_focus": ["project grounding", "interview realism"],
+            "max_questions": 4,
+        }
+    )
+
+    assert "Bad output examples to avoid:" in prompt.user_prompt
+    assert "A set where every question is a generic architecture question." in prompt.user_prompt
+    assert "A set where every question is effectively the same 'explain the design' prompt." in prompt.user_prompt
+    assert "A set with no fundamentals question and no migration/failure-mode question." in prompt.user_prompt
 
 
 def test_project_agent_prompt_builder_exposes_stable_output_contract() -> None:

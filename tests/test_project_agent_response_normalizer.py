@@ -109,3 +109,42 @@ def test_response_normalizer_rejects_question_without_prompt() -> None:
             request={"request_id": "req-5"},
             raw_result={"raw_content": '{"questions":[{"id":"q-1"}]}'},
         )
+
+
+def test_response_normalizer_uses_prompt_and_category_signals_to_avoid_level_collapse() -> None:
+    normalizer = ProjectAgentResponseNormalizer()
+
+    response = normalizer.normalize(
+        request={
+            "request_id": "req-6",
+            "current_decisions": ["checkpoint continuity", "id boundary discipline"],
+            "source_refs": ["docs/spec.md"],
+        },
+        raw_result={
+            "raw_content": """
+            {
+              "questions": [
+                {
+                  "id": "fundamentals-1",
+                  "category": "interview_fundamentals",
+                  "difficulty": "basic",
+                  "prompt": "What is the difference between append-only records and mutable current state?"
+                },
+                {
+                  "id": "design-1",
+                  "difficulty": "basic",
+                  "prompt": "Why do we keep transport ids separate from durable ids in the checkpoint path?"
+                },
+                {
+                  "id": "risk-1",
+                  "category": "failure_mode",
+                  "difficulty": "basic",
+                  "prompt": "What migration risk appears if malformed LLM output reaches persisted checkpoint records?"
+                }
+              ]
+            }
+            """,
+        },
+    )
+
+    assert [item["question_level"] for item in response["questions"]] == ["core", "why", "abstract"]
