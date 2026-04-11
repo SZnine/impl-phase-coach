@@ -15,6 +15,8 @@ from review_gate.checkpoint_models import (
 )
 from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, StageReview, WorkspaceEvent
 from review_gate.generated_chain_resolver import GeneratedChainResolver
+from review_gate.question_checkpoint_writer import QuestionCheckpointWriter
+from review_gate.question_set_generation_publisher import QuestionSetGenerationPublisher
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
     AssessmentSummaryDTO,
@@ -97,6 +99,10 @@ class ReviewFlowService:
         self._assessment_synthesizer = AssessmentSynthesizer()
         self._store = store
         self._generated_chain_resolver = GeneratedChainResolver(store=store) if store is not None else None
+        self._question_checkpoint_writer = QuestionCheckpointWriter(store=store) if store is not None else None
+        self._question_set_generation_publisher = (
+            QuestionSetGenerationPublisher(store=store) if store is not None else None
+        )
         self._answer_checkpoint_writer = (
             AnswerCheckpointWriter(store=store, synthesizer=self._assessment_synthesizer) if store is not None else None
         )
@@ -258,7 +264,7 @@ class ReviewFlowService:
 
     def generate_question_set(self, request: dict) -> dict:
         response = self._question_generation_client.generate(request)
-        if self._store is not None:
+        if self._question_checkpoint_writer is not None and self._question_set_generation_publisher is not None:
             self._persist_question_generation_checkpoint(request, response)
         return response
 
@@ -533,142 +539,31 @@ class ReviewFlowService:
         )
 
     def _persist_question_generation_checkpoint(self, request: dict, response: dict) -> None:
-        request_id = str(request["request_id"])
-        workflow_run_id = f"run-{request_id}"
         question_set_id = self._resolve_stage_question_set_id(
             project_id=str(request["project_id"]),
             stage_id=str(request["stage_id"]),
         )
-        question_batch_id = f"qb-{request_id}"
-        questions = list(response.get("questions", []))
-        persisted_question_items: list[QuestionItemRecord] = []
-        for index, item in enumerate(questions):
-            raw_question_id = str(item.get("question_id", f"q-{index + 1}"))
-            transport_question_id = self._build_transport_question_id(
-                question_set_id=question_set_id,
-                raw_question_id=raw_question_id,
-            )
-            persisted_question_id = f"{request_id}-{raw_question_id}"
-            persisted_question_items.append(
-                QuestionItemRecord(
-                    question_id=persisted_question_id,
-                    question_batch_id=question_batch_id,
-                    question_type=str(item.get("question_level", "core")),
-                    prompt=str(item.get("prompt", "")),
-                    intent=str(item.get("intent", "")),
-                    difficulty_level=str(item.get("question_level", "core")),
-                    order_index=index,
-                    status="ready",
-                    created_at=str(request.get("created_at", "")),
-                    payload={
-                        "expected_signals": list(item.get("expected_signals", [])),
-                        "source_context": list(item.get("source_context", [])),
-                        "transport_question_id": transport_question_id,
-                    },
-                )
-            )
-        self._store.insert_workflow_request(
-            WorkflowRequestRecord(
-                request_id=request_id,
-                request_type="question_cycle",
-                project_id=str(request["project_id"]),
-                stage_id=str(request["stage_id"]),
-                requested_by="question_generation_client",
-                source="review_flow_service",
-                status="completed",
-                created_at=str(request.get("created_at", "")),
-                payload={"request": dict(request)},
-            )
+        persisted_generation = self._question_checkpoint_writer.write(
+            request=request,
+            response=response,
+            question_set_id=question_set_id,
         )
-        self._store.insert_workflow_run(
-            WorkflowRunRecord(
-                run_id=workflow_run_id,
-                request_id=request_id,
-                run_type="question_cycle",
-                status="completed",
-                started_at=str(request.get("created_at", "")),
-                finished_at=str(request.get("created_at", "")),
-                supersedes_run_id=None,
-                payload={"question_count": len(questions), "request_id": request_id},
-            )
+        self._question_set_generation_publisher.publish(
+            request_id=str(request["request_id"]),
+            project_id=str(request["project_id"]),
+            stage_id=str(request["stage_id"]),
+            question_set_id=question_set_id,
+            question_batch_id=persisted_generation.question_batch_id,
+            workflow_run_id=persisted_generation.workflow_run_id,
+            question_item_ids=persisted_generation.question_item_ids,
+            created_at=str(request.get("created_at", "")),
         )
-        self._store.insert_question_batch(
-            QuestionBatchRecord(
-                question_batch_id=question_batch_id,
-                workflow_run_id=workflow_run_id,
-                project_id=str(request["project_id"]),
-                stage_id=str(request["stage_id"]),
-                generated_by="question_generation_client",
-                source="review_flow_service",
-                batch_goal=str(request.get("stage_goal", "")),
-                entry_question_id=(persisted_question_items[0].question_id if persisted_question_items else ""),
-                status="active",
-                created_at=str(request.get("created_at", "")),
-                payload={"question_count": len(questions), "request_id": request_id},
-            )
-        )
-        self._store.insert_question_items(persisted_question_items)
-        if question_set_id:
-            generation_index = self._next_question_set_generation_index(
-                project_id=str(request["project_id"]),
-                stage_id=str(request["stage_id"]),
-                question_set_id=question_set_id,
-            )
-            self._store.append_event(
-                WorkspaceEvent(
-                    event_id=f"evt-question-set-generated-{generation_index:08d}-{request_id}",
-                    project_id=str(request["project_id"]),
-                    event_type="question_set_generated",
-                    created_at=str(request.get("created_at", "")),
-                    payload={
-                        "generation_index": generation_index,
-                        "stage_id": str(request["stage_id"]),
-                        "question_set_id": question_set_id,
-                        "question_batch_id": question_batch_id,
-                        "workflow_run_id": workflow_run_id,
-                        "question_item_ids": [item.question_id for item in persisted_question_items],
-                    },
-                )
-            )
 
     def _resolve_stage_question_set_id(self, *, project_id: str, stage_id: str) -> str:
         stage = self._get_stage_review(project_id, stage_id)
         if stage is not None and stage.active_question_set_id:
             return stage.active_question_set_id
         return str(self._get_stage_definition(project_id, stage_id).get("active_question_set_id", ""))
-
-    def _next_question_set_generation_index(self, *, project_id: str, stage_id: str, question_set_id: str) -> int:
-        if self._store is None:
-            return 1
-        events = self._store.list_events(project_id=project_id)
-        latest_generation_index = 0
-        for event in events:
-            if event.event_type != "question_set_generated":
-                continue
-            if str(event.payload.get("stage_id", "")) != stage_id:
-                continue
-            if str(event.payload.get("question_set_id", "")) != question_set_id:
-                continue
-            if "generation_index" not in event.payload:
-                continue
-            latest_generation_index = max(
-                latest_generation_index,
-                self._coerce_generation_index(event.payload.get("generation_index")),
-            )
-        return latest_generation_index + 1
-
-    def _coerce_generation_index(self, raw_value: object) -> int:
-        try:
-            return int(raw_value)
-        except (TypeError, ValueError):
-            return 0
-
-    def _build_transport_question_id(self, *, question_set_id: str, raw_question_id: str) -> str:
-        if not question_set_id:
-            return raw_question_id
-        if raw_question_id.startswith(f"{question_set_id}-"):
-            return raw_question_id
-        return f"{question_set_id}-{raw_question_id}"
 
     def _build_submit_evidence_spans(
         self,

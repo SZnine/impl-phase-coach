@@ -474,6 +474,68 @@ def test_generate_question_set_persists_first_checkpoint_question_chain(tmp_path
         ),
     ]
 
+    assert store.list_events(project_id="proj-1") == [
+        WorkspaceEvent(
+            event_id="evt-question-set-generated-00000001-req-qgen-1",
+            project_id="proj-1",
+            event_type="question_set_generated",
+            created_at="",
+            payload={
+                "generation_index": 1,
+                "stage_id": "stage-1",
+                "question_set_id": "set-1",
+                "question_batch_id": "qb-req-qgen-1",
+                "workflow_run_id": "run-req-qgen-1",
+                "question_item_ids": ["req-qgen-1-q-1", "req-qgen-1-q-2"],
+            },
+        )
+    ]
+
+
+def test_generate_question_set_skips_event_without_active_question_set(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    service = ReviewFlowService.with_store(store)
+    original_get_stage_review = service._get_stage_review
+    original_get_stage_definition = service._get_stage_definition
+    service._get_stage_review = lambda project_id, stage_id: None  # type: ignore[method-assign]
+    service._get_stage_definition = (  # type: ignore[method-assign]
+        lambda project_id, stage_id: {
+            **original_get_stage_definition(project_id, stage_id),
+            "active_question_set_id": "",
+        }
+    )
+
+    try:
+        response = service.generate_question_set(
+            {
+                "request_id": "req-qgen-empty-set",
+                "project_id": "proj-1",
+                "stage_id": "stage-1",
+                "stage_label": "module-interface-boundary",
+                "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+                "stage_summary": "Task 4 adapter shell",
+                "stage_artifacts": [],
+                "stage_exit_criteria": [],
+                "current_decisions": ["Question, Assessment, Decision split"],
+                "key_logic_points": ["structured DTOs"],
+                "known_weak_points": [],
+                "boundary_focus": ["module vs interface"],
+                "question_strategy": "core_and_why",
+                "max_questions": 2,
+                "source_refs": [],
+            }
+        )
+
+        assert response["request_id"] == "req-qgen-empty-set"
+        assert response["questions"]
+        assert store.get_question_batch("qb-req-qgen-empty-set") is not None
+        assert all(event.event_type != "question_set_generated" for event in store.list_events(project_id="proj-1"))
+        assert store.list_question_items("qb-req-qgen-empty-set")[0].payload["transport_question_id"] == "q-1"
+    finally:
+        service._get_stage_review = original_get_stage_review  # type: ignore[method-assign]
+        service._get_stage_definition = original_get_stage_definition  # type: ignore[method-assign]
+
 
 def test_submit_answer_uses_current_question_context_and_user_excerpt() -> None:
     assessment_client = CapturingAssessmentClient.for_testing()
