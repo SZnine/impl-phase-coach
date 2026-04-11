@@ -103,7 +103,7 @@ def test_evaluator_agent_client_builds_openai_compatible_request_and_returns_raw
     assert response["raw_response"]["choices"][0]["message"]["content"] == response["raw_content"]
 
 
-def test_evaluator_agent_client_defaults_response_format_to_json_object() -> None:
+def test_evaluator_agent_client_defaults_response_format_to_json_object_when_absent() -> None:
     seen: dict[str, object] = {}
 
     def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object]) -> dict[str, object]:
@@ -133,6 +133,73 @@ def test_evaluator_agent_client_defaults_response_format_to_json_object() -> Non
     payload = seen["payload"]
     assert isinstance(payload, dict)
     assert payload["response_format"] == {"type": "json_object"}
+
+
+def test_evaluator_agent_client_defaults_response_format_to_json_object_when_none() -> None:
+    seen: dict[str, object] = {}
+
+    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object]) -> dict[str, object]:
+        seen["payload"] = payload
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"assessment":{"verdict":"partial","score_total":0.72}}'
+                    }
+                }
+            ]
+        }
+
+    client = _build_test_client(transport=fake_transport)
+
+    client.assess(
+        {
+            "request_id": "req-3",
+            "messages": [
+                {"role": "system", "content": "You are the Evaluator Agent."},
+                {"role": "user", "content": "Assess the answer."},
+            ],
+            "response_format": None,
+        }
+    )
+
+    payload = seen["payload"]
+    assert isinstance(payload, dict)
+    assert payload["response_format"] == {"type": "json_object"}
+
+
+def test_evaluator_agent_client_preserves_explicit_response_format_override() -> None:
+    seen: dict[str, object] = {}
+    override = {"type": "json_schema", "json_schema": {"name": "assessment"}}
+
+    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object]) -> dict[str, object]:
+        seen["payload"] = payload
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"assessment":{"verdict":"partial","score_total":0.72}}'
+                    }
+                }
+            ]
+        }
+
+    client = _build_test_client(transport=fake_transport)
+
+    client.assess(
+        {
+            "request_id": "req-4",
+            "messages": [
+                {"role": "system", "content": "You are the Evaluator Agent."},
+                {"role": "user", "content": "Assess the answer."},
+            ],
+            "response_format": override,
+        }
+    )
+
+    payload = seen["payload"]
+    assert isinstance(payload, dict)
+    assert payload["response_format"] == override
 
 
 def test_evaluator_agent_client_extracts_list_text_content_fragments() -> None:

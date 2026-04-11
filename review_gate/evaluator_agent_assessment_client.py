@@ -40,10 +40,14 @@ class EvaluatorAgentAssessmentClient:
         return cls(runtime_config=runtime_config)
 
     def assess(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        response_format = request.get("response_format")
+        if not isinstance(response_format, Mapping):
+            response_format = {"type": "json_object"}
+
         payload: dict[str, Any] = {
             "model": self._runtime_config.model,
             "messages": request["messages"],
-            "response_format": request.get("response_format", {"type": "json_object"}),
+            "response_format": response_format,
             "stream": True,
         }
 
