@@ -43,6 +43,7 @@ def test_evaluator_agent_prompt_builder_allows_grounded_lower_level_issues() -> 
     assert "test gaps" in prompt.system_prompt
     assert "boundary confusion" in prompt.system_prompt
     assert "migration/compatibility risk" in prompt.system_prompt
+    assert "Do not return a freeform essay without structured assessment fields." in prompt.system_prompt
 
 
 def test_evaluator_agent_prompt_builder_exposes_structured_output_contract() -> None:
@@ -61,12 +62,12 @@ def test_evaluator_agent_prompt_builder_exposes_structured_output_contract() -> 
     assert prompt.output_contract["verdict"] == "pass|continue_probing|redirect_to_learning"
     assert prompt.output_contract["dimension_scores"] == {
         "correctness": "0-5",
+        "reasoning": "0-5",
+        "decision_awareness": "0-5",
         "boundary_awareness": "0-5",
-        "implementation_depth": "0-5",
-        "test_quality": "0-5",
-        "migration_compatibility": "0-5",
+        "stability": "0-5",
     }
     assert prompt.output_contract["core_gaps"] == ["string"]
     assert prompt.output_contract["misconceptions"] == ["string"]
     assert prompt.output_contract["evidence"] == ["string"]
-    assert prompt.output_contract["action_recommendation"] == "string"
+    assert prompt.output_contract["recommended_action"] == "string"

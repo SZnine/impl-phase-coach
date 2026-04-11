@@ -27,6 +27,7 @@ class EvaluatorAgentPromptBuilder:
                 "Assess the answer against the request context and current implementation boundaries.",
                 "Favor concrete, grounded concerns over abstract architecture critique when they are supported by the context.",
                 "You may judge lower-level implementation issues such as library/API misuse, method misuse, test gaps, boundary confusion, and migration/compatibility risk.",
+                "Do not return a freeform essay without structured assessment fields.",
                 "Return only structured output that matches the requested output contract.",
             ]
         )
@@ -54,15 +55,15 @@ class EvaluatorAgentPromptBuilder:
             "verdict": "pass|continue_probing|redirect_to_learning",
             "dimension_scores": {
                 "correctness": "0-5",
+                "reasoning": "0-5",
+                "decision_awareness": "0-5",
                 "boundary_awareness": "0-5",
-                "implementation_depth": "0-5",
-                "test_quality": "0-5",
-                "migration_compatibility": "0-5",
+                "stability": "0-5",
             },
             "core_gaps": ["string"],
             "misconceptions": ["string"],
             "evidence": ["string"],
-            "action_recommendation": "string",
+            "recommended_action": "string",
         }
 
         return EvaluatorAgentPromptPackage(
