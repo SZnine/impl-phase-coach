@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.agent_clients import AssessmentAgentClient, QuestionGenerationAgentClient
@@ -15,6 +16,8 @@ from review_gate.checkpoint_models import (
 )
 from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, StageReview, WorkspaceEvent
 from review_gate.generated_chain_resolver import GeneratedChainResolver
+from review_gate.project_agent_question_generation_client import ProjectAgentQuestionGenerationClient
+from review_gate.project_agent_response_normalizer import ProjectAgentResponseNormalizer
 from review_gate.question_checkpoint_writer import QuestionCheckpointWriter
 from review_gate.question_set_generation_publisher import QuestionSetGenerationPublisher
 from review_gate.storage_sqlite import SQLiteStore
@@ -90,11 +93,13 @@ class ReviewFlowService:
     def __init__(
         self,
         *,
-        question_generation_client: QuestionGenerationAgentClient | None = None,
+        question_generation_client: QuestionGenerationAgentClient | ProjectAgentQuestionGenerationClient | None = None,
+        project_agent_response_normalizer: ProjectAgentResponseNormalizer | None = None,
         assessment_client: AssessmentAgentClient | None = None,
         store: SQLiteStore | None = None,
     ) -> None:
         self._question_generation_client = question_generation_client or QuestionGenerationAgentClient.for_testing()
+        self._project_agent_response_normalizer = project_agent_response_normalizer
         self._assessment_client = assessment_client or AssessmentAgentClient.for_testing()
         self._assessment_synthesizer = AssessmentSynthesizer()
         self._store = store
@@ -118,6 +123,23 @@ class ReviewFlowService:
     @classmethod
     def with_store(cls, store: SQLiteStore) -> "ReviewFlowService":
         return cls(store=store)
+
+    @classmethod
+    def with_local_project_agent(
+        cls,
+        *,
+        store: SQLiteStore | None = None,
+        root_dir: Path | None = None,
+        model: str = "gpt-5.4",
+    ) -> "ReviewFlowService":
+        return cls(
+            question_generation_client=ProjectAgentQuestionGenerationClient.from_local_config(
+                root_dir=root_dir,
+                model=model,
+            ),
+            project_agent_response_normalizer=ProjectAgentResponseNormalizer(),
+            store=store,
+        )
 
     def list_projects(self) -> list[dict]:
         return [
@@ -264,9 +286,17 @@ class ReviewFlowService:
 
     def generate_question_set(self, request: dict) -> dict:
         response = self._question_generation_client.generate(request)
+        response = self._normalize_question_generation_response(request=request, response=response)
         if self._question_checkpoint_writer is not None and self._question_set_generation_publisher is not None:
             self._persist_question_generation_checkpoint(request, response)
         return response
+
+    def _normalize_question_generation_response(self, *, request: dict, response: dict) -> dict:
+        if self._project_agent_response_normalizer is None:
+            return response
+        if "raw_content" not in response:
+            return response
+        return self._project_agent_response_normalizer.normalize(request=request, raw_result=response)
 
     def _get_project_definition(self, project_id: str) -> dict:
         return dict(self._PROJECTS.get(project_id, self._PROJECTS["proj-1"]))

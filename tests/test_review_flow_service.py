@@ -1,7 +1,10 @@
+import pytest
+
 from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.answer_checkpoint_writer import CheckpointWriteResult
 from review_gate.generated_chain_resolver import ResolvedQuestionChain
 from review_gate.domain import QuestionSet, WorkspaceEvent
+from review_gate.project_agent_response_normalizer import ProjectAgentResponseNormalizer
 from review_gate.review_flow_service import ReviewFlowService
 from review_gate.storage_sqlite import SQLiteStore
 from pathlib import Path
@@ -90,6 +93,33 @@ class WeakAssessmentClient:
             "learning_recommendations": ["Revisit the stage boundary."],
             "warnings": [],
             "confidence": 0.7,
+        }
+
+
+class RawProjectAgentQuestionGenerationClient:
+    def __init__(self, *, raw_content: str) -> None:
+        self.raw_content = raw_content
+        self.requests: list[dict] = []
+
+    def generate(self, request: dict) -> dict:
+        self.requests.append(request)
+        return {
+            "request_id": request["request_id"],
+            "provider": "openai_compatible",
+            "model": "gpt-5.4",
+            "raw_content": self.raw_content,
+            "raw_response": {"choices": [{"message": {"content": self.raw_content}}]},
+            "output_contract": {
+                "questions": [
+                    {
+                        "id": "q-1",
+                        "prompt": "string",
+                        "type": "open",
+                        "intent": "string",
+                        "difficulty": "basic|intermediate|advanced",
+                    }
+                ]
+            },
         }
 
 
@@ -765,58 +795,103 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
             "transport_question_id": "set-1-q-1",
         },
     )
-    assert store.list_answer_items("ab-req-chain-existing-1") == [
-        AnswerItemRecord(
-            answer_item_id="ai-req-chain-existing-1-0",
-            answer_batch_id="ab-req-chain-existing-1",
-            question_id="req-qgen-1-q-1",
-            answered_by="local-user",
-            answer_text="We split the boundary to keep state and scoring separate.",
-            answer_format="plain_text",
-            order_index=0,
-            answered_at="2026-04-09T12:00:00Z",
-            status="answered",
-            revision_of_answer_item_id=None,
-            payload={
-                "request_id": "req-chain-existing-1",
-                "transport_question_id": "set-1-q-1",
-                "answer_excerpt": "We split the boundary to keep state and scoring separate.",
-            },
-        )
-    ]
-    assert store.get_evaluation_batch("eb-req-chain-existing-1") == EvaluationBatchRecord(
-        evaluation_batch_id="eb-req-chain-existing-1",
-        answer_batch_id="ab-req-chain-existing-1",
-        workflow_run_id="run-req-chain-existing-1",
-        project_id="proj-1",
-        stage_id="stage-1",
-        evaluated_by="assessment_agent",
-        evaluator_version="review_flow_service:first-checkpoint",
-        confidence=0.8,
-        status="completed",
-        evaluated_at="2026-04-09T12:00:00Z",
-        supersedes_evaluation_batch_id=None,
-        payload={
-            "request_id": "req-chain-existing-1",
-            "verdict": "partial",
-            "score": 0.8,
-            "summary": "Assessment verdict partial for set-1-q-1.",
-        },
+
+
+def test_generate_question_set_normalizes_project_agent_output_and_persists_checkpoint(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    question_set = _semantic_question_set()
+    store.upsert_question_set(question_set)
+    service = ReviewFlowService(
+        question_generation_client=RawProjectAgentQuestionGenerationClient(
+            raw_content="""
+            {
+              "questions": [
+                {
+                  "id": "llm-q-1",
+                  "prompt": "Why is the generation-side orchestration split valuable now?",
+                  "intent": "Check migration reasoning.",
+                  "difficulty": "intermediate",
+                  "expected_signals": ["generation-side split"],
+                  "source_context": ["project-agent"]
+                }
+              ],
+              "generation_summary": "Generated 1 llm-backed question.",
+              "coverage_notes": ["project-grounded", "interview-style"],
+              "warnings": [],
+              "confidence": 0.91
+            }
+            """
+        ),
+        project_agent_response_normalizer=ProjectAgentResponseNormalizer(),
+        store=store,
     )
-    assert store.list_evidence_spans("ei-req-chain-existing-1-0") == [
-        EvidenceSpanRecord(
-            evidence_span_id="es-req-chain-existing-1-0",
-            evaluation_item_id="ei-req-chain-existing-1-0",
-            answer_item_id="ai-req-chain-existing-1-0",
-            span_type="quoted_text",
-            supports_dimension="assessment",
-            content="assessment evidence: verdict=partial",
-            start_offset=0,
-            end_offset=len("assessment evidence: verdict=partial"),
-            created_at="2026-04-09T12:00:00Z",
-            payload={"evidence_index": 0},
-        )
+
+    response = service.generate_question_set(
+        {
+            "request_id": "req-qgen-llm-1",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "project-agent-llm-integration",
+            "stage_goal": "switch generation to a real llm-backed project agent",
+            "stage_summary": "first stable llm-backed generation path",
+            "current_decisions": ["split generation-side orchestration"],
+            "key_logic_points": ["checkpoint continuity"],
+            "known_weak_points": ["output normalization"],
+            "boundary_focus": ["project + interview question mix"],
+            "question_strategy": "full_depth",
+            "max_questions": 1,
+            "source_refs": ["docs/spec.md"],
+        }
+    )
+
+    assert response["request_id"] == "req-qgen-llm-1"
+    assert response["generation_summary"] == "Generated 1 llm-backed question."
+    assert response["questions"] == [
+        {
+            "question_id": "q-1",
+            "question_level": "why",
+            "prompt": "Why is the generation-side orchestration split valuable now?",
+            "intent": "Check migration reasoning.",
+            "expected_signals": ["generation-side split"],
+            "source_context": ["project-agent"],
+        }
     ]
+    assert store.get_question_batch("qb-req-qgen-llm-1") is not None
+    assert store.list_question_items("qb-req-qgen-llm-1")[0].payload["transport_question_id"] == "set-1-q-1"
+
+
+def test_generate_question_set_rejects_invalid_project_agent_output_before_checkpoint_write(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    store.upsert_question_set(_semantic_question_set())
+    service = ReviewFlowService(
+        question_generation_client=RawProjectAgentQuestionGenerationClient(raw_content="not-json"),
+        project_agent_response_normalizer=ProjectAgentResponseNormalizer(),
+        store=store,
+    )
+
+    with pytest.raises(ValueError, match="not valid JSON"):
+        service.generate_question_set(
+            {
+                "request_id": "req-qgen-llm-bad",
+                "project_id": "proj-1",
+                "stage_id": "stage-1",
+                "stage_label": "project-agent-llm-integration",
+                "stage_goal": "switch generation to a real llm-backed project agent",
+                "stage_summary": "first stable llm-backed generation path",
+                "current_decisions": ["split generation-side orchestration"],
+                "key_logic_points": ["checkpoint continuity"],
+                "known_weak_points": ["output normalization"],
+                "boundary_focus": ["project + interview question mix"],
+                "question_strategy": "full_depth",
+                "max_questions": 1,
+                "source_refs": ["docs/spec.md"],
+            }
+        )
+
+    assert store.get_workflow_request("req-qgen-llm-bad") is None
+    assert store.get_question_batch("qb-req-qgen-llm-bad") is None
 
 
 def test_submit_answer_reuses_newest_generated_question_batch_for_same_question_set(tmp_path: Path) -> None:

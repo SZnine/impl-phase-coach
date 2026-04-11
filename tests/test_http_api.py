@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from review_gate.action_dtos import ProposalActionRequest, SubmitAnswerRequest
 from review_gate.http_api import create_app, create_default_workspace_api
+from review_gate.project_agent_question_generation_client import ProjectAgentQuestionGenerationClient
 from review_gate.profile_space_service import ProfileSpaceService
 from review_gate.proposal_center_service import ProposalCenterService
 from review_gate.review_flow_service import ReviewFlowService
@@ -510,6 +511,91 @@ def test_create_default_workspace_api_uses_environment_demo_paths(tmp_path: Path
     assert session.workspace_session_id == "local-workspace-session"
     assert db_path.exists()
     assert session_path.exists()
+
+
+def test_create_default_workspace_api_can_enable_local_project_agent(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "workbench.sqlite3"
+    session_path = tmp_path / "workspace-session.json"
+    config_dir = tmp_path / "agent-root" / ".env"
+    config_dir.mkdir(parents=True)
+    (config_dir / "api_key.md").write_text(
+        "Base URL:https://example.test\nAPI Key:test-key\n",
+        encoding="utf-8",
+    )
+
+    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object]) -> dict[str, object]:
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": """
+                        {
+                          "questions": [
+                            {
+                              "id": "llm-q-1",
+                              "prompt": "Why is the first migration checkpoint intentionally stopping at facts?",
+                              "intent": "Check migration trade-off reasoning.",
+                              "difficulty": "intermediate",
+                              "expected_signals": ["facts before graph"],
+                              "source_context": ["project-agent"]
+                            }
+                          ],
+                          "generation_summary": "Generated 1 llm-backed question.",
+                          "coverage_notes": ["project-grounded", "interview-style"],
+                          "warnings": [],
+                          "confidence": 0.9
+                        }
+                        """
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr(ProjectAgentQuestionGenerationClient, "_default_transport", staticmethod(fake_transport))
+
+    api = create_default_workspace_api(
+        db_path=db_path,
+        session_path=session_path,
+        use_local_project_agent=True,
+        project_agent_root_dir=config_dir.parent,
+        project_agent_model="gpt-5.4",
+    )
+
+    response = api._flow.generate_question_set(
+        {
+            "request_id": "req-http-llm-1",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "project-agent-llm-integration",
+            "stage_goal": "switch generation to a real llm-backed project agent",
+            "stage_summary": "transport-level llm generation regression",
+            "current_decisions": ["split generation-side orchestration"],
+            "key_logic_points": ["checkpoint continuity"],
+            "known_weak_points": ["output normalization"],
+            "boundary_focus": ["project + interview question mix"],
+            "question_strategy": "full_depth",
+            "max_questions": 1,
+            "source_refs": ["docs/spec.md"],
+        }
+    )
+
+    assert response["request_id"] == "req-http-llm-1"
+    assert response["generation_summary"] == "Generated 1 llm-backed question."
+    assert response["questions"] == [
+        {
+            "question_id": "q-1",
+            "question_level": "why",
+            "prompt": "Why is the first migration checkpoint intentionally stopping at facts?",
+            "intent": "Check migration trade-off reasoning.",
+            "expected_signals": ["facts before graph"],
+            "source_context": ["project-agent"],
+        }
+    ]
+
+    store = api._flow._store
+    assert store is not None
+    assert store.get_workflow_request("req-http-llm-1") is not None
+    assert store.get_question_batch("qb-req-http-llm-1") is not None
 
 
 def test_http_api_round_trips_workspace_session_between_instances(tmp_path: Path) -> None:

@@ -29,13 +29,46 @@ def _default_session_path(db_path: Path) -> Path:
     return db_path.with_name("workspace-session.json")
 
 
-def create_default_workspace_api(db_path: Path | None = None, session_path: Path | None = None) -> WorkspaceAPI:
+def _default_project_agent_root_dir() -> Path:
+    env_path = os.environ.get("REVIEW_WORKBENCH_PROJECT_AGENT_ROOT", "").strip()
+    if env_path:
+        return Path(env_path)
+    return Path(__file__).resolve().parent.parent
+
+
+def _default_project_agent_model() -> str:
+    return os.environ.get("REVIEW_WORKBENCH_PROJECT_AGENT_MODEL", "").strip() or "gpt-5.4"
+
+
+def _should_use_local_project_agent() -> bool:
+    raw = os.environ.get("REVIEW_WORKBENCH_USE_LOCAL_PROJECT_AGENT", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def create_default_workspace_api(
+    db_path: Path | None = None,
+    session_path: Path | None = None,
+    *,
+    use_local_project_agent: bool | None = None,
+    project_agent_root_dir: Path | None = None,
+    project_agent_model: str | None = None,
+) -> WorkspaceAPI:
     resolved_db_path = db_path or _default_db_path()
     resolved_session_path = session_path or _default_session_path(resolved_db_path)
     store = SQLiteStore(resolved_db_path)
     store.initialize()
+    use_project_agent = _should_use_local_project_agent() if use_local_project_agent is None else use_local_project_agent
+    flow = (
+        ReviewFlowService.with_local_project_agent(
+            store=store,
+            root_dir=project_agent_root_dir or _default_project_agent_root_dir(),
+            model=project_agent_model or _default_project_agent_model(),
+        )
+        if use_project_agent
+        else ReviewFlowService.with_store(store)
+    )
     return WorkspaceAPI(
-        flow=ReviewFlowService.with_store(store),
+        flow=flow,
         profile_space=ProfileSpaceService.with_store(store),
         proposal_center=ProposalCenterService.with_store(store),
         session_store=JsonWorkspaceStateStore(resolved_session_path),
