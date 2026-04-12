@@ -378,6 +378,33 @@ def test_evaluator_response_normalizer_treats_integer_dimension_scores_as_five_p
     assert response["confidence"] == 0.24
 
 
+def test_evaluator_response_normalizer_maps_pass_with_minor_gaps_to_strong() -> None:
+    normalizer = EvaluatorAgentResponseNormalizer()
+
+    response = normalizer.normalize(
+        request={"request_id": "req-live-2d"},
+        raw_result={
+            "request_id": "req-live-2d",
+            "raw_content": """
+            {
+              "assessment": {
+                "verdict": "pass_with_minor_gaps",
+                "dimension_scores": {
+                  "correctness": 0.92,
+                  "reasoning": 0.90,
+                  "decision_awareness": 0.88,
+                  "boundary_awareness": 0.94,
+                  "stability": 0.90
+                }
+              }
+            }
+            """,
+        },
+    )
+
+    assert response["assessment"]["verdict"] == "strong"
+
+
 def test_evaluator_response_normalizer_uses_top_level_fallback_fields_from_live_provider_shape() -> None:
     normalizer = EvaluatorAgentResponseNormalizer()
 

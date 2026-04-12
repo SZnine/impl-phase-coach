@@ -24,6 +24,7 @@ class EvaluatorAgentResponseNormalizer:
         "passed": "strong",
         "strong": "strong",
         "strong_accept": "strong",
+        "pass_with_minor_gaps": "strong",
         "satisfactory": "strong",
         "partial": "partial",
         "partially_satisfactory": "partial",
