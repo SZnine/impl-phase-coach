@@ -23,12 +23,14 @@ class EvaluatorAgentResponseNormalizer:
         "pass": "strong",
         "passed": "strong",
         "strong": "strong",
+        "strong_accept": "strong",
         "satisfactory": "strong",
         "partial": "partial",
         "partially_satisfactory": "partial",
         "partially_sufficient": "partial",
         "continue_probing": "partial",
         "weak": "weak",
+        "reject": "weak",
         "fail": "weak",
         "failed": "weak",
         "insufficient": "weak",
@@ -96,16 +98,20 @@ class EvaluatorAgentResponseNormalizer:
     def _normalize_dimension_scores(self, value: Any) -> dict[str, int]:
         payload = value if isinstance(value, Mapping) else {}
         normalized = {key: 0 for key in self._DIMENSION_KEYS}
+        use_ratio_scale = self._should_treat_dimension_scores_as_ratio(payload)
 
         for key in self._DIMENSION_KEYS:
             if key in payload:
-                normalized[key] = self._coerce_dimension_value(payload.get(key))
+                normalized[key] = self._coerce_dimension_value(payload.get(key), use_ratio_scale=use_ratio_scale)
 
         for alias, canonical in self._DIMENSION_ALIASES.items():
             if normalized[canonical]:
                 continue
             if alias in payload:
-                normalized[canonical] = self._coerce_dimension_value(payload.get(alias))
+                normalized[canonical] = self._coerce_dimension_value(
+                    payload.get(alias),
+                    use_ratio_scale=use_ratio_scale,
+                )
 
         return normalized
 
@@ -200,11 +206,21 @@ class EvaluatorAgentResponseNormalizer:
             return default
 
     @classmethod
-    def _coerce_dimension_value(cls, value: Any) -> int:
+    def _coerce_dimension_value(cls, value: Any, *, use_ratio_scale: bool) -> int:
         numeric = cls._coerce_float(value, 0.0)
-        if 0.0 <= numeric <= 1.0:
+        if use_ratio_scale:
             return max(0, min(5, int(round(numeric * 5))))
         return max(0, min(5, int(round(numeric))))
+
+    @classmethod
+    def _should_treat_dimension_scores_as_ratio(cls, payload: Mapping[str, Any]) -> bool:
+        numeric_values: list[float] = []
+        for raw in payload.values():
+            try:
+                numeric_values.append(float(raw))
+            except (TypeError, ValueError):
+                continue
+        return bool(numeric_values) and max(numeric_values) <= 1.0
 
     @classmethod
     def _normalize_verdict(cls, value: Any) -> str:
@@ -222,7 +238,11 @@ class EvaluatorAgentResponseNormalizer:
         if not isinstance(dimension_scores, Mapping):
             return 0.0
 
-        values = [cls._coerce_dimension_value(value) for value in dimension_scores.values()]
+        use_ratio_scale = cls._should_treat_dimension_scores_as_ratio(dimension_scores)
+        values = [
+            cls._coerce_dimension_value(value, use_ratio_scale=use_ratio_scale)
+            for value in dimension_scores.values()
+        ]
         if not values:
             return 0.0
         return round(sum(values) / (len(values) * 5.0), 4)

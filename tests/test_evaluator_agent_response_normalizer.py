@@ -343,6 +343,41 @@ def test_evaluator_response_normalizer_maps_insufficient_verdict_to_weak() -> No
     assert response["recommended_action"] == "redirect_to_learning"
 
 
+def test_evaluator_response_normalizer_treats_integer_dimension_scores_as_five_point_scale() -> None:
+    normalizer = EvaluatorAgentResponseNormalizer()
+
+    response = normalizer.normalize(
+        request={"request_id": "req-live-2c"},
+        raw_result={
+            "request_id": "req-live-2c",
+            "raw_content": """
+            {
+              "assessment": {
+                "verdict": "reject",
+                "dimension_scores": {
+                  "correctness": 1,
+                  "reasoning": 2,
+                  "decision_awareness": 1,
+                  "boundary_awareness": 1,
+                  "stability": 1
+                }
+              }
+            }
+            """,
+        },
+    )
+
+    assert response["assessment"]["verdict"] == "weak"
+    assert response["assessment"]["dimension_scores"] == {
+        "correctness": 1,
+        "reasoning": 2,
+        "decision_awareness": 1,
+        "boundary_awareness": 1,
+        "stability": 1,
+    }
+    assert response["confidence"] == 0.24
+
+
 def test_evaluator_response_normalizer_uses_top_level_fallback_fields_from_live_provider_shape() -> None:
     normalizer = EvaluatorAgentResponseNormalizer()
 
