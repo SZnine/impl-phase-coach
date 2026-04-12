@@ -81,3 +81,21 @@ def test_evaluator_agent_prompt_builder_exposes_structured_output_contract() -> 
         "warnings": ["string"],
         "confidence": "0-1",
     }
+
+
+def test_evaluator_agent_prompt_builder_explicitly_forbids_flat_or_alternative_dimension_shapes() -> None:
+    builder = EvaluatorAgentPromptBuilder()
+
+    prompt = builder.build(
+        {
+            "request_id": "req-20",
+            "project_context": "review_gate evaluator rollout",
+            "stage_context": "phase 2 live provider alignment",
+            "question_context": "How should the evaluator shape its JSON?",
+            "answer_text": "Return the canonical nested assessment envelope.",
+        }
+    )
+
+    assert "Keep verdict and dimension_scores inside the nested assessment object" in prompt.system_prompt
+    assert "Use only the canonical dimension keys" in prompt.system_prompt
+    assert "Do not invent alternative keys such as current_stage_boundary_alignment" in prompt.user_prompt

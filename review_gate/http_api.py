@@ -6,8 +6,13 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from review_gate.action_dtos import ProposalActionRequest, SubmitAnswerRequest
+from review_gate.evaluator_agent_assessment_client import EvaluatorAgentAssessmentClient
+from review_gate.evaluator_agent_prompt_builder import EvaluatorAgentPromptBuilder
+from review_gate.evaluator_agent_response_normalizer import EvaluatorAgentResponseNormalizer
 from review_gate.profile_space_service import ProfileSpaceService
 from review_gate.proposal_center_service import ProposalCenterService
+from review_gate.project_agent_question_generation_client import ProjectAgentQuestionGenerationClient
+from review_gate.project_agent_response_normalizer import ProjectAgentResponseNormalizer
 from review_gate.review_flow_service import ReviewFlowService
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import WorkspaceSessionDTO
@@ -40,8 +45,24 @@ def _default_project_agent_model() -> str:
     return os.environ.get("REVIEW_WORKBENCH_PROJECT_AGENT_MODEL", "").strip() or "gpt-5.4"
 
 
+def _default_evaluator_agent_root_dir() -> Path:
+    env_path = os.environ.get("REVIEW_WORKBENCH_EVALUATOR_AGENT_ROOT", "").strip()
+    if env_path:
+        return Path(env_path)
+    return Path(__file__).resolve().parent.parent
+
+
+def _default_evaluator_agent_model() -> str:
+    return os.environ.get("REVIEW_WORKBENCH_EVALUATOR_AGENT_MODEL", "").strip() or "gpt-5.4"
+
+
 def _should_use_local_project_agent() -> bool:
     raw = os.environ.get("REVIEW_WORKBENCH_USE_LOCAL_PROJECT_AGENT", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _should_use_local_evaluator_agent() -> bool:
+    raw = os.environ.get("REVIEW_WORKBENCH_USE_LOCAL_EVALUATOR_AGENT", "").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 
@@ -52,20 +73,39 @@ def create_default_workspace_api(
     use_local_project_agent: bool | None = None,
     project_agent_root_dir: Path | None = None,
     project_agent_model: str | None = None,
+    use_local_evaluator_agent: bool | None = None,
+    evaluator_agent_root_dir: Path | None = None,
+    evaluator_agent_model: str | None = None,
 ) -> WorkspaceAPI:
     resolved_db_path = db_path or _default_db_path()
     resolved_session_path = session_path or _default_session_path(resolved_db_path)
     store = SQLiteStore(resolved_db_path)
     store.initialize()
     use_project_agent = _should_use_local_project_agent() if use_local_project_agent is None else use_local_project_agent
-    flow = (
-        ReviewFlowService.with_local_project_agent(
-            store=store,
-            root_dir=project_agent_root_dir or _default_project_agent_root_dir(),
-            model=project_agent_model or _default_project_agent_model(),
-        )
-        if use_project_agent
-        else ReviewFlowService.with_store(store)
+    use_evaluator_agent = (
+        _should_use_local_evaluator_agent() if use_local_evaluator_agent is None else use_local_evaluator_agent
+    )
+    flow = ReviewFlowService(
+        question_generation_client=(
+            ProjectAgentQuestionGenerationClient.from_local_config(
+                root_dir=project_agent_root_dir or _default_project_agent_root_dir(),
+                model=project_agent_model or _default_project_agent_model(),
+            )
+            if use_project_agent
+            else None
+        ),
+        project_agent_response_normalizer=ProjectAgentResponseNormalizer() if use_project_agent else None,
+        assessment_client=(
+            EvaluatorAgentAssessmentClient.from_local_config(
+                root_dir=evaluator_agent_root_dir or _default_evaluator_agent_root_dir(),
+                model=evaluator_agent_model or _default_evaluator_agent_model(),
+            )
+            if use_evaluator_agent
+            else None
+        ),
+        evaluator_agent_prompt_builder=EvaluatorAgentPromptBuilder() if use_evaluator_agent else None,
+        evaluator_agent_response_normalizer=EvaluatorAgentResponseNormalizer() if use_evaluator_agent else None,
+        store=store,
     )
     return WorkspaceAPI(
         flow=flow,

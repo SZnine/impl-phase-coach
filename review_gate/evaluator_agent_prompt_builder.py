@@ -28,6 +28,10 @@ class EvaluatorAgentPromptBuilder:
                 "Favor concrete, grounded concerns over abstract architecture critique when they are supported by the context.",
                 "You may judge lower-level implementation issues such as library/API misuse, method misuse, test gaps, boundary confusion, and migration/compatibility risk.",
                 "Do not return a freeform essay without structured assessment fields.",
+                "Return one JSON object only. Do not add markdown fences or explanatory prose.",
+                "Keep verdict and dimension_scores inside the nested assessment object, not at the top level.",
+                "Use only the canonical dimension keys: correctness, reasoning, decision_awareness, boundary_awareness, stability.",
+                "Core gaps, misconceptions, and evidence should be arrays of strings whenever possible.",
                 "Return only structured output that matches the requested output contract.",
             ]
         )
@@ -48,6 +52,9 @@ class EvaluatorAgentPromptBuilder:
                 "- Identify misconceptions.",
                 "- Cite evidence from the answer and context.",
                 "- End with an action recommendation.",
+                "- Put verdict inside assessment.verdict.",
+                "- Put dimension scores inside assessment.dimension_scores with the canonical keys only.",
+                "- Do not invent alternative keys such as current_stage_boundary_alignment or implementation_grounding.",
             ]
         )
 

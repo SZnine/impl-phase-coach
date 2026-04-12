@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from review_gate.action_dtos import ProposalActionRequest, SubmitAnswerRequest
+from review_gate.evaluator_agent_assessment_client import EvaluatorAgentAssessmentClient
 from review_gate.http_api import create_app, create_default_workspace_api
 from review_gate.project_agent_question_generation_client import ProjectAgentQuestionGenerationClient
 from review_gate.profile_space_service import ProfileSpaceService
@@ -596,6 +597,92 @@ def test_create_default_workspace_api_can_enable_local_project_agent(tmp_path: P
     assert store is not None
     assert store.get_workflow_request("req-http-llm-1") is not None
     assert store.get_question_batch("qb-req-http-llm-1") is not None
+
+
+def test_create_default_workspace_api_can_enable_local_evaluator_agent(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "workbench.sqlite3"
+    session_path = tmp_path / "workspace-session.json"
+    config_dir = tmp_path / "agent-root" / ".env"
+    config_dir.mkdir(parents=True)
+    (config_dir / "api_key.md").write_text(
+        "Base URL:https://example.test\nAPI Key:test-key\n",
+        encoding="utf-8",
+    )
+
+    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object]) -> dict[str, object]:
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": """
+                        {
+                          "assessment": {
+                            "score_total": 0.64,
+                            "dimension_scores": {
+                              "correctness": 3,
+                              "reasoning": 2,
+                              "decision_awareness": 1,
+                              "boundary_awareness": 1,
+                              "stability": 2
+                            },
+                            "verdict": "partial",
+                            "grounded_issues": [
+                              "Misused sqlite transaction handling.",
+                              "No regression test for malformed SSE chunks."
+                            ],
+                            "misconceptions": [
+                              "Treats response_format as optional provider contract."
+                            ],
+                            "evidence": [
+                              {"summary": "Used sqlite connection outside transaction scope."},
+                              "Skipped malformed-output regression."
+                            ]
+                          },
+                          "recommended_action": "redirect_to_learning",
+                          "recommended_follow_up_questions": ["How would you guard malformed provider output?"],
+                          "learning_recommendations": ["Add evaluator-output regression coverage."],
+                          "warnings": [],
+                          "confidence": 0.76
+                        }
+                        """
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr(EvaluatorAgentAssessmentClient, "_default_transport", staticmethod(fake_transport))
+
+    api = create_default_workspace_api(
+        db_path=db_path,
+        session_path=session_path,
+        use_local_evaluator_agent=True,
+        evaluator_agent_root_dir=config_dir.parent,
+        evaluator_agent_model="gpt-5.4",
+    )
+
+    response = api.submit_answer_action(
+        SubmitAnswerRequest(
+            request_id="req-http-eval-llm-1",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-12T11:00:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="I used sqlite transaction boundaries loosely and I do not have a malformed-SSE regression yet.",
+            draft_id=None,
+        )
+    )
+
+    assert response.success is True
+    assert response.result_type == "assessment_created"
+    assert response.assessment_summary is not None
+
+    store = api._flow._store
+    assert store is not None
+    assert store.get_evaluation_batch("eb-req-http-eval-llm-1") is not None
+    assert store.get_latest_assessment_fact_batch("proj-1", "stage-1") is not None
 
 
 def test_http_api_round_trips_workspace_session_between_instances(tmp_path: Path) -> None:

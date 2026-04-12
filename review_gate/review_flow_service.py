@@ -15,6 +15,8 @@ from review_gate.checkpoint_models import (
     WorkflowRunRecord,
 )
 from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, StageReview, WorkspaceEvent
+from review_gate.evaluator_agent_prompt_builder import EvaluatorAgentPromptBuilder
+from review_gate.evaluator_agent_response_normalizer import EvaluatorAgentResponseNormalizer
 from review_gate.generated_chain_resolver import GeneratedChainResolver
 from review_gate.project_agent_question_generation_client import ProjectAgentQuestionGenerationClient
 from review_gate.project_agent_response_normalizer import ProjectAgentResponseNormalizer
@@ -95,11 +97,15 @@ class ReviewFlowService:
         *,
         question_generation_client: QuestionGenerationAgentClient | ProjectAgentQuestionGenerationClient | None = None,
         project_agent_response_normalizer: ProjectAgentResponseNormalizer | None = None,
+        evaluator_agent_prompt_builder: EvaluatorAgentPromptBuilder | None = None,
+        evaluator_agent_response_normalizer: EvaluatorAgentResponseNormalizer | None = None,
         assessment_client: AssessmentAgentClient | None = None,
         store: SQLiteStore | None = None,
     ) -> None:
         self._question_generation_client = question_generation_client or QuestionGenerationAgentClient.for_testing()
         self._project_agent_response_normalizer = project_agent_response_normalizer
+        self._evaluator_agent_prompt_builder = evaluator_agent_prompt_builder
+        self._evaluator_agent_response_normalizer = evaluator_agent_response_normalizer
         self._assessment_client = assessment_client or AssessmentAgentClient.for_testing()
         self._assessment_synthesizer = AssessmentSynthesizer()
         self._store = store
@@ -298,6 +304,69 @@ class ReviewFlowService:
             return response
         return self._project_agent_response_normalizer.normalize(request=request, raw_result=response)
 
+    def _normalize_assessment_response(self, *, request: SubmitAnswerRequest, response: dict) -> dict:
+        if self._evaluator_agent_response_normalizer is None:
+            return response
+        if "raw_content" not in response:
+            return response
+        return self._evaluator_agent_response_normalizer.normalize(
+            request={
+                "request_id": request.request_id,
+                "project_id": request.project_id,
+                "stage_id": request.stage_id,
+                "question_set_id": request.question_set_id,
+                "question_id": request.question_id,
+            },
+            raw_result=response,
+        )
+
+    def _build_assessment_request_payload(
+        self,
+        *,
+        request: SubmitAnswerRequest,
+        current_question: CurrentQuestionContext,
+    ) -> dict:
+        if self._evaluator_agent_prompt_builder is None:
+            return {
+                "request_id": request.request_id,
+                "project_id": current_question.project_id,
+                "stage_id": current_question.stage_id,
+                "question_set_id": current_question.question_set_id,
+                "question_id": current_question.question_id,
+                "question_level": current_question.question_level,
+                "question_prompt": current_question.question_prompt,
+                "question_intent": current_question.question_intent,
+                "expected_signals": current_question.expected_signals,
+                "user_answer": request.answer_text,
+                "source_context": current_question.source_context,
+                "current_stage_decisions": [],
+                "current_stage_logic_points": [],
+                "current_boundary_focus": [],
+                "assessment_policy": {"mode": "simple"},
+                "history_signals": [],
+            }
+
+        prompt = self._evaluator_agent_prompt_builder.build(
+            {
+                "request_id": request.request_id,
+                "project_context": self._get_project_definition(request.project_id)["project_summary"],
+                "stage_context": self._get_stage_definition(request.project_id, request.stage_id)["stage_goal"],
+                "question_context": f"{current_question.question_level}: {current_question.question_prompt}",
+                "answer_text": request.answer_text,
+                "current_decisions": current_question.expected_signals,
+                "boundary_focus": current_question.source_context,
+            }
+        )
+        return {
+            "request_id": request.request_id,
+            "messages": [
+                {"role": "system", "content": prompt.system_prompt},
+                {"role": "user", "content": prompt.user_prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "output_contract": prompt.output_contract,
+        }
+
     def _get_project_definition(self, project_id: str) -> dict:
         return dict(self._PROJECTS.get(project_id, self._PROJECTS["proj-1"]))
 
@@ -448,25 +517,9 @@ class ReviewFlowService:
         current_question = self._build_current_question_context(request)
         answer_id = f"answer-{request.request_id}"
         assessment_response = self._assessment_client.assess(
-            {
-                "request_id": request.request_id,
-                "project_id": current_question.project_id,
-                "stage_id": current_question.stage_id,
-                "question_set_id": current_question.question_set_id,
-                "question_id": current_question.question_id,
-                "question_level": current_question.question_level,
-                "question_prompt": current_question.question_prompt,
-                "question_intent": current_question.question_intent,
-                "expected_signals": current_question.expected_signals,
-                "user_answer": request.answer_text,
-                "source_context": current_question.source_context,
-                "current_stage_decisions": [],
-                "current_stage_logic_points": [],
-                "current_boundary_focus": [],
-                "assessment_policy": {"mode": "simple"},
-                "history_signals": [],
-            }
+            self._build_assessment_request_payload(request=request, current_question=current_question)
         )
+        assessment_response = self._normalize_assessment_response(request=request, response=assessment_response)
         assessment = dict(assessment_response["assessment"])
         verdict = assessment.get("verdict", "partial")
         answer_excerpt = request.answer_text.strip()[:120]

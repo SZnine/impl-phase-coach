@@ -2,6 +2,7 @@ import pytest
 
 from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.answer_checkpoint_writer import CheckpointWriteResult
+from review_gate.evaluator_agent_response_normalizer import EvaluatorAgentResponseNormalizer
 from review_gate.generated_chain_resolver import ResolvedQuestionChain
 from review_gate.domain import QuestionSet, WorkspaceEvent
 from review_gate.project_agent_response_normalizer import ProjectAgentResponseNormalizer
@@ -120,6 +121,22 @@ class RawProjectAgentQuestionGenerationClient:
                     }
                 ]
             },
+        }
+
+
+class RawEvaluatorAssessmentClient:
+    def __init__(self, *, raw_content: str) -> None:
+        self.raw_content = raw_content
+        self.requests: list[dict] = []
+
+    def assess(self, request: dict) -> dict:
+        self.requests.append(request)
+        return {
+            "request_id": request["request_id"],
+            "provider": "openai_compatible",
+            "model": "gpt-5.4",
+            "raw_content": self.raw_content,
+            "raw_response": {"choices": [{"message": {"content": self.raw_content}}]},
         }
 
 
@@ -1602,6 +1619,136 @@ def test_submit_answer_derives_support_signals_from_dimension_hits_and_core_gaps
             "basis_key": "boundary_awareness",
         }
     ]
+
+
+def test_submit_answer_normalizes_raw_evaluator_output_before_persisting_checkpoint_chain(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    store.upsert_question_set(_semantic_question_set())
+    service = ReviewFlowService(
+        assessment_client=RawEvaluatorAssessmentClient(
+            raw_content="""
+            {
+              "assessment": {
+                "score_total": 0.62,
+                "dimension_scores": {
+                  "correctness": 3,
+                  "reasoning": 2,
+                  "decision_awareness": 1,
+                  "boundary_awareness": 1,
+                  "stability": 2
+                },
+                "verdict": "partial",
+                "grounded_issues": [
+                  "Misused sqlite transaction handling.",
+                  "No regression test for malformed SSE chunks."
+                ],
+                "misconceptions": [
+                  "Treats response_format as optional provider contract."
+                ],
+                "evidence": [
+                  {"summary": "Used sqlite connection outside transaction scope."},
+                  "Skipped malformed-output regression."
+                ],
+                "support_basis_tags": [
+                  {
+                    "basis_key": "boundary_awareness",
+                    "source_label": "Boundary discipline",
+                    "source_node_type": "foundation",
+                    "target_label": "Misused sqlite transaction handling.",
+                    "target_node_type": "method"
+                  }
+                ]
+              },
+              "recommended_action": "redirect_to_learning",
+              "recommended_follow_up_questions": ["How would you guard malformed provider output?"],
+              "learning_recommendations": ["Add an evaluator-output regression before changing service wiring."],
+              "warnings": ["Provider output relied on normalization."],
+              "confidence": 0.74
+            }
+            """
+        ),
+        evaluator_agent_response_normalizer=EvaluatorAgentResponseNormalizer(),
+        store=store,
+    )
+
+    response = service.submit_answer(
+        SubmitAnswerRequest(
+            request_id="req-eval-raw-1",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-12T10:00:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="I used sqlite transaction boundaries loosely and I do not have a malformed-SSE regression yet.",
+            draft_id=None,
+        )
+    )
+
+    assert response.success is True
+    assert response.result_type == "assessment_created"
+    assert response.assessment_summary is not None
+
+    evaluation_batch = store.get_evaluation_batch("eb-req-eval-raw-1")
+    assert evaluation_batch is not None
+    assert evaluation_batch.confidence == 0.74
+
+    evaluation_items = store.list_evaluation_items("eb-req-eval-raw-1")
+    assert len(evaluation_items) == 1
+    assert evaluation_items[0].payload["diagnosed_gaps"] == [
+        "Misused sqlite transaction handling.",
+        "No regression test for malformed SSE chunks.",
+    ]
+
+    evidence_spans = store.list_evidence_spans("ei-req-eval-raw-1-0")
+    assert [span.content for span in evidence_spans] == [
+        "Used sqlite connection outside transaction scope.",
+        "Skipped malformed-output regression.",
+    ]
+
+    fact_batch = store.get_latest_assessment_fact_batch("proj-1", "stage-1")
+    assert fact_batch is not None
+    assert fact_batch.assessment_fact_batch_id == "afb-eb-req-eval-raw-1"
+    assert fact_batch.payload["item_count"] == 2
+
+    fact_items = store.list_assessment_fact_items("afb-eb-req-eval-raw-1")
+    assert [item.topic_key for item in fact_items] == [
+        "Misused sqlite transaction handling.",
+        "No regression test for malformed SSE chunks.",
+    ]
+
+
+def test_submit_answer_rejects_malformed_raw_evaluator_output_before_checkpoint_writes(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    store.upsert_question_set(_semantic_question_set())
+    service = ReviewFlowService(
+        assessment_client=RawEvaluatorAssessmentClient(raw_content="not-json"),
+        evaluator_agent_response_normalizer=EvaluatorAgentResponseNormalizer(),
+        store=store,
+    )
+
+    with pytest.raises(ValueError, match="not valid JSON"):
+        service.submit_answer(
+            SubmitAnswerRequest(
+                request_id="req-eval-raw-bad",
+                project_id="proj-1",
+                stage_id="stage-1",
+                source_page="question_detail",
+                actor_id="local-user",
+                created_at="2026-04-12T10:05:00Z",
+                question_set_id="set-1",
+                question_id="set-1-q-1",
+                answer_text="This answer is long enough to reach evaluator normalization.",
+                draft_id=None,
+            )
+        )
+
+    assert store.get_answer_batch("ab-req-eval-raw-bad") is None
+    assert store.get_evaluation_batch("eb-req-eval-raw-bad") is None
+    assert store.get_latest_assessment_fact_batch("proj-1", "stage-1") is None
 
 
 
