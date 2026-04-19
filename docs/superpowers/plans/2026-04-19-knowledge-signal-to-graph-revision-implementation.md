@@ -620,7 +620,7 @@ git commit -m "feat: persist graph projection records"
 - Create: `review_gate/knowledge_graph_projector.py`
 - Modify: `tests/test_knowledge_graph_projector.py`
 
-- [ ] **Step 1: Add failing single-topic projection test**
+- [x] **Step 1: Add failing single-topic projection test**
 
 Append this test:
 
@@ -686,7 +686,7 @@ def test_graph_projector_groups_same_topic_signals_into_one_node() -> None:
     assert pointer.active_graph_revision_id == revision.graph_revision_id
 ```
 
-- [ ] **Step 2: Run single-topic test to verify it fails**
+- [x] **Step 2: Run single-topic test to verify it fails**
 
 Run:
 
@@ -696,7 +696,7 @@ $env:PYTHONPATH='.'; pytest tests/test_knowledge_graph_projector.py::test_graph_
 
 Expected: FAIL because `review_gate.knowledge_graph_projector` does not exist.
 
-- [ ] **Step 3: Implement the projector**
+- [x] **Step 3: Implement the projector**
 
 Create `review_gate/knowledge_graph_projector.py`:
 
@@ -833,7 +833,7 @@ class KnowledgeSignalGraphProjector:
         return safe or "untagged"
 ```
 
-- [ ] **Step 4: Run single-topic test to verify it passes**
+- [x] **Step 4: Run single-topic test to verify it passes**
 
 Run:
 
@@ -843,7 +843,7 @@ $env:PYTHONPATH='.'; pytest tests/test_knowledge_graph_projector.py::test_graph_
 
 Expected: PASS.
 
-- [ ] **Step 5: Add multi-topic projection test**
+- [x] **Step 5: Add multi-topic projection test**
 
 Append this test:
 
@@ -897,7 +897,7 @@ def test_graph_projector_creates_one_node_per_topic() -> None:
     assert [node.node_type for node in nodes] == ["weakness_topic", "strength_topic"]
 ```
 
-- [ ] **Step 6: Run projector tests**
+- [x] **Step 6: Run projector tests**
 
 Run:
 
@@ -907,7 +907,7 @@ $env:PYTHONPATH='.'; pytest tests/test_knowledge_graph_projector.py -q
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 Run:
 
