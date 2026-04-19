@@ -458,7 +458,7 @@ git commit -m "feat: persist knowledge signals"
 - Create: `review_gate/knowledge_signal_projector.py`
 - Modify: `tests/test_knowledge_signal_projector.py`
 
-- [ ] **Step 1: Add failing one-to-one projector test**
+- [x] **Step 1: Add failing one-to-one projector test**
 
 Append this test to `tests/test_knowledge_signal_projector.py`:
 
@@ -510,7 +510,7 @@ def test_projector_converts_gap_fact_to_weakness_signal() -> None:
     assert signals[0].payload["description"] == "Answer still mixes proposal status with execution status."
 ```
 
-- [ ] **Step 2: Run the one-to-one projector test to verify it fails**
+- [x] **Step 2: Run the one-to-one projector test to verify it fails**
 
 Run:
 
@@ -520,7 +520,7 @@ pytest tests/test_knowledge_signal_projector.py::test_projector_converts_gap_fac
 
 Expected: FAIL because `review_gate.knowledge_signal_projector` does not exist.
 
-- [ ] **Step 3: Implement the projector**
+- [x] **Step 3: Implement the projector**
 
 Create `review_gate/knowledge_signal_projector.py`:
 
@@ -593,7 +593,7 @@ class AssessmentFactSignalProjector:
         return f"ks-{fact_item.assessment_fact_item_id}-{signal_type}-{topic_key}"
 ```
 
-- [ ] **Step 4: Run the one-to-one projector test to verify it passes**
+- [x] **Step 4: Run the one-to-one projector test to verify it passes**
 
 Run:
 
@@ -603,7 +603,7 @@ pytest tests/test_knowledge_signal_projector.py::test_projector_converts_gap_fac
 
 Expected: PASS.
 
-- [ ] **Step 5: Add one-to-many projector test**
+- [x] **Step 5: Add one-to-many projector test**
 
 Append this test:
 
@@ -653,7 +653,7 @@ def test_projector_preserves_one_signal_per_fact_item() -> None:
     assert [signal.topic_key for signal in signals] == ["state-boundary", "test-discipline"]
 ```
 
-- [ ] **Step 6: Run all projector tests**
+- [x] **Step 6: Run all projector tests**
 
 Run:
 
@@ -663,7 +663,7 @@ pytest tests/test_knowledge_signal_projector.py -q
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 Run:
 
