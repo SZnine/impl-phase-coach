@@ -373,6 +373,51 @@ def test_active_graph_revision_pointer_replaces_previous_revision(tmp_path: Path
     assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") == replacement
 
 
+def test_graph_projection_records_do_not_write_legacy_graph_tables(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "checkpoint.db")
+    store.initialize()
+    revision = GraphRevisionRecord(
+        graph_revision_id="gr-1",
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        revision_type="deterministic_signal_projection",
+        based_on_revision_id=None,
+        source_fact_batch_ids=["afb-1"],
+        source_signal_ids=["ks-1"],
+        status="active",
+        revision_summary="1 signal projected into 1 node",
+        node_count=1,
+        relation_count=0,
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-09T12:04:00Z",
+        activated_at="2026-04-09T12:04:00Z",
+        payload={},
+    )
+    node = KnowledgeNodeRecord(
+        knowledge_node_id="kn-gr-1-state-boundary",
+        graph_revision_id="gr-1",
+        topic_key="state-boundary",
+        label="state boundary",
+        node_type="weakness_topic",
+        description="state boundary is unclear",
+        source_signal_ids=["ks-1"],
+        supporting_fact_ids=["afi-1"],
+        confidence=0.7,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-09T12:04:00Z",
+        updated_at="2026-04-09T12:04:00Z",
+        payload={},
+    )
+
+    store.insert_graph_revision(revision)
+    store.insert_graph_nodes([node])
+
+    assert store.list_knowledge_nodes() == []
+    assert store.list_knowledge_relations() == []
+
+
 def _seed_minimal_assessment_fact(store: SQLiteStore) -> None:
     workflow_request = WorkflowRequestRecord(
         request_id="wr-1",

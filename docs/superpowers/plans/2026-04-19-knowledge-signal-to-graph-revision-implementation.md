@@ -924,7 +924,7 @@ git commit -m "feat: project knowledge signals into graph revisions"
 - Modify: `tests/test_checkpoint_storage.py`
 - Modify: `docs/superpowers/plans/2026-04-19-knowledge-signal-to-graph-revision-implementation.md`
 
-- [ ] **Step 1: Add legacy graph isolation test**
+- [x] **Step 1: Add legacy graph isolation test**
 
 Append this test:
 
@@ -974,7 +974,7 @@ def test_graph_projection_records_do_not_write_legacy_graph_tables(tmp_path: Pat
     assert store.list_knowledge_relations() == []
 ```
 
-- [ ] **Step 2: Run legacy graph isolation test**
+- [x] **Step 2: Run legacy graph isolation test**
 
 Run:
 
@@ -984,7 +984,7 @@ $env:PYTHONPATH='.'; pytest tests/test_checkpoint_storage.py::test_graph_project
 
 Expected: PASS.
 
-- [ ] **Step 3: Run focused graph projection tests**
+- [x] **Step 3: Run focused graph projection tests**
 
 Run:
 
@@ -994,7 +994,7 @@ $env:PYTHONPATH='.'; pytest tests/test_knowledge_graph_projector.py tests/test_c
 
 Expected: PASS.
 
-- [ ] **Step 4: Run related regression tests**
+- [x] **Step 4: Run related regression tests**
 
 Run:
 
@@ -1004,7 +1004,7 @@ $env:PYTHONPATH='.'; pytest tests/test_knowledge_signal_projector.py tests/test_
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 Run:
 
