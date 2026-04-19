@@ -33,7 +33,7 @@
 - Modify: `review_gate/checkpoint_models.py`
 - Create: `tests/test_knowledge_graph_projector.py`
 
-- [ ] **Step 1: Write failing record round-trip tests**
+- [x] **Step 1: Write failing record round-trip tests**
 
 Create `tests/test_knowledge_graph_projector.py`:
 
@@ -103,7 +103,7 @@ def test_active_graph_revision_pointer_record_round_trips_json_payload() -> None
     assert ActiveGraphRevisionPointerRecord.from_json(pointer.to_json()) == pointer
 ```
 
-- [ ] **Step 2: Run record tests to verify they fail**
+- [x] **Step 2: Run record tests to verify they fail**
 
 Run:
 
@@ -113,7 +113,7 @@ $env:PYTHONPATH='.'; pytest tests/test_knowledge_graph_projector.py -q
 
 Expected: FAIL because the three graph records do not exist.
 
-- [ ] **Step 3: Add graph records**
+- [x] **Step 3: Add graph records**
 
 Append these dataclasses after `KnowledgeSignalRecord` in `review_gate/checkpoint_models.py`:
 
@@ -219,7 +219,7 @@ class ActiveGraphRevisionPointerRecord(JsonSerializable):
         )
 ```
 
-- [ ] **Step 4: Run record tests to verify they pass**
+- [x] **Step 4: Run record tests to verify they pass**
 
 Run:
 
@@ -229,7 +229,7 @@ $env:PYTHONPATH='.'; pytest tests/test_knowledge_graph_projector.py -q
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 Run:
 

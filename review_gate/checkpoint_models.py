@@ -406,3 +406,104 @@ class KnowledgeSignalRecord(JsonSerializable):
             created_at=_coerce_str(payload.get("created_at"), ""),
             payload=_coerce_payload_dict(payload.get("payload")),
         )
+
+
+@dataclass(slots=True)
+class GraphRevisionRecord(JsonSerializable):
+    graph_revision_id: str
+    project_id: str
+    scope_type: str
+    scope_ref: str
+    revision_type: str
+    based_on_revision_id: str | None
+    source_fact_batch_ids: list[str]
+    source_signal_ids: list[str]
+    status: str
+    revision_summary: str
+    node_count: int
+    relation_count: int
+    created_by: str
+    created_at: str
+    activated_at: str | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            graph_revision_id=_coerce_str(payload["graph_revision_id"]),
+            project_id=_coerce_str(payload.get("project_id"), ""),
+            scope_type=_coerce_str(payload.get("scope_type"), ""),
+            scope_ref=_coerce_str(payload.get("scope_ref"), ""),
+            revision_type=_coerce_str(payload.get("revision_type"), ""),
+            based_on_revision_id=_coerce_optional_str(payload.get("based_on_revision_id")),
+            source_fact_batch_ids=_coerce_str_list(payload.get("source_fact_batch_ids")),
+            source_signal_ids=_coerce_str_list(payload.get("source_signal_ids")),
+            status=_coerce_str(payload.get("status"), ""),
+            revision_summary=_coerce_str(payload.get("revision_summary"), ""),
+            node_count=_coerce_int(payload.get("node_count"), 0),
+            relation_count=_coerce_int(payload.get("relation_count"), 0),
+            created_by=_coerce_str(payload.get("created_by"), ""),
+            created_at=_coerce_str(payload.get("created_at"), ""),
+            activated_at=_coerce_optional_str(payload.get("activated_at")),
+            payload=_coerce_payload_dict(payload.get("payload")),
+        )
+
+
+@dataclass(slots=True)
+class KnowledgeNodeRecord(JsonSerializable):
+    knowledge_node_id: str
+    graph_revision_id: str
+    topic_key: str
+    label: str
+    node_type: str
+    description: str
+    source_signal_ids: list[str]
+    supporting_fact_ids: list[str]
+    confidence: float
+    status: str
+    created_by: str
+    created_at: str
+    updated_at: str
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            knowledge_node_id=_coerce_str(payload["knowledge_node_id"]),
+            graph_revision_id=_coerce_str(payload.get("graph_revision_id"), ""),
+            topic_key=_coerce_str(payload.get("topic_key"), ""),
+            label=_coerce_str(payload.get("label"), ""),
+            node_type=_coerce_str(payload.get("node_type"), ""),
+            description=_coerce_str(payload.get("description"), ""),
+            source_signal_ids=_coerce_str_list(payload.get("source_signal_ids")),
+            supporting_fact_ids=_coerce_str_list(payload.get("supporting_fact_ids")),
+            confidence=_coerce_float(payload.get("confidence"), 0.0),
+            status=_coerce_str(payload.get("status"), ""),
+            created_by=_coerce_str(payload.get("created_by"), ""),
+            created_at=_coerce_str(payload.get("created_at"), ""),
+            updated_at=_coerce_str(payload.get("updated_at"), ""),
+            payload=_coerce_payload_dict(payload.get("payload")),
+        )
+
+
+@dataclass(slots=True)
+class ActiveGraphRevisionPointerRecord(JsonSerializable):
+    project_id: str
+    scope_type: str
+    scope_ref: str
+    active_graph_revision_id: str
+    updated_at: str
+    updated_by: str
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            project_id=_coerce_str(payload["project_id"]),
+            scope_type=_coerce_str(payload.get("scope_type"), ""),
+            scope_ref=_coerce_str(payload.get("scope_ref"), ""),
+            active_graph_revision_id=_coerce_str(payload.get("active_graph_revision_id"), ""),
+            updated_at=_coerce_str(payload.get("updated_at"), ""),
+            updated_by=_coerce_str(payload.get("updated_by"), ""),
+            payload=_coerce_payload_dict(payload.get("payload")),
+        )
