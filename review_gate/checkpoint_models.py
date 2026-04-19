@@ -371,3 +371,38 @@ class AssessmentFactItemRecord(JsonSerializable):
             ),
             payload=_coerce_payload_dict(payload.get("payload")),
         )
+
+
+@dataclass(slots=True)
+class KnowledgeSignalRecord(JsonSerializable):
+    signal_id: str
+    assessment_fact_batch_id: str
+    assessment_fact_item_id: str
+    source_evaluation_item_id: str | None
+    signal_type: str
+    topic_key: str
+    polarity: str
+    summary: str
+    confidence: float
+    status: str
+    projector_version: str
+    created_at: str
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            signal_id=_coerce_str(payload["signal_id"]),
+            assessment_fact_batch_id=_coerce_str(payload.get("assessment_fact_batch_id"), ""),
+            assessment_fact_item_id=_coerce_str(payload.get("assessment_fact_item_id"), ""),
+            source_evaluation_item_id=_coerce_optional_str(payload.get("source_evaluation_item_id")),
+            signal_type=_coerce_str(payload.get("signal_type"), ""),
+            topic_key=_coerce_str(payload.get("topic_key"), ""),
+            polarity=_coerce_str(payload.get("polarity"), ""),
+            summary=_coerce_str(payload.get("summary"), ""),
+            confidence=_coerce_float(payload.get("confidence"), 0.0),
+            status=_coerce_str(payload.get("status"), ""),
+            projector_version=_coerce_str(payload.get("projector_version"), ""),
+            created_at=_coerce_str(payload.get("created_at"), ""),
+            payload=_coerce_payload_dict(payload.get("payload")),
+        )

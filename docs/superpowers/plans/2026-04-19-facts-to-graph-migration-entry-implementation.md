@@ -33,7 +33,7 @@
 - Modify: `review_gate/checkpoint_models.py`
 - Test: `tests/test_knowledge_signal_projector.py`
 
-- [ ] **Step 1: Write the failing serialization test**
+- [x] **Step 1: Write the failing serialization test**
 
 Create `tests/test_knowledge_signal_projector.py` with this initial test:
 
@@ -61,7 +61,7 @@ def test_knowledge_signal_record_round_trips_json_payload() -> None:
     assert KnowledgeSignalRecord.from_json(signal.to_json()) == signal
 ```
 
-- [ ] **Step 2: Run the model test to verify it fails**
+- [x] **Step 2: Run the model test to verify it fails**
 
 Run:
 
@@ -71,7 +71,7 @@ pytest tests/test_knowledge_signal_projector.py::test_knowledge_signal_record_ro
 
 Expected: FAIL with import error for `KnowledgeSignalRecord`.
 
-- [ ] **Step 3: Add the model**
+- [x] **Step 3: Add the model**
 
 Append this dataclass after `AssessmentFactItemRecord` in `review_gate/checkpoint_models.py`:
 
@@ -111,7 +111,7 @@ class KnowledgeSignalRecord(JsonSerializable):
         )
 ```
 
-- [ ] **Step 4: Run the model test to verify it passes**
+- [x] **Step 4: Run the model test to verify it passes**
 
 Run:
 
@@ -121,7 +121,7 @@ pytest tests/test_knowledge_signal_projector.py::test_knowledge_signal_record_ro
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 Run:
 
