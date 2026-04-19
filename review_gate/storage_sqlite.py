@@ -22,6 +22,7 @@ from review_gate.domain import (
     WorkspaceEvent,
 )
 from review_gate.checkpoint_models import (
+    ActiveGraphRevisionPointerRecord,
     AnswerBatchRecord,
     AnswerItemRecord,
     AssessmentFactBatchRecord,
@@ -29,6 +30,8 @@ from review_gate.checkpoint_models import (
     EvaluationBatchRecord,
     EvaluationItemRecord,
     EvidenceSpanRecord,
+    GraphRevisionRecord,
+    KnowledgeNodeRecord,
     KnowledgeSignalRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
@@ -422,6 +425,56 @@ class SQLiteStore:
 
                 CREATE INDEX IF NOT EXISTS idx_knowledge_signals_type_topic
                     ON knowledge_signals(signal_type, topic_key);
+
+                CREATE TABLE IF NOT EXISTS graph_revisions (
+                    graph_revision_id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    scope_type TEXT NOT NULL,
+                    scope_ref TEXT NOT NULL,
+                    revision_type TEXT NOT NULL,
+                    based_on_revision_id TEXT,
+                    status TEXT NOT NULL,
+                    node_count INTEGER NOT NULL,
+                    relation_count INTEGER NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    activated_at TEXT,
+                    payload TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_graph_revisions_project_scope
+                    ON graph_revisions(project_id, scope_type, scope_ref);
+
+                CREATE TABLE IF NOT EXISTS graph_knowledge_nodes (
+                    knowledge_node_id TEXT PRIMARY KEY,
+                    graph_revision_id TEXT NOT NULL,
+                    topic_key TEXT NOT NULL,
+                    node_type TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (graph_revision_id) REFERENCES graph_revisions(graph_revision_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_graph_knowledge_nodes_revision
+                    ON graph_knowledge_nodes(graph_revision_id);
+
+                CREATE INDEX IF NOT EXISTS idx_graph_knowledge_nodes_topic
+                    ON graph_knowledge_nodes(topic_key);
+
+                CREATE TABLE IF NOT EXISTS active_graph_revision_pointers (
+                    project_id TEXT NOT NULL,
+                    scope_type TEXT NOT NULL,
+                    scope_ref TEXT NOT NULL,
+                    active_graph_revision_id TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    PRIMARY KEY (project_id, scope_type, scope_ref),
+                    FOREIGN KEY (active_graph_revision_id) REFERENCES graph_revisions(graph_revision_id)
+                );
 
                 CREATE TABLE IF NOT EXISTS question_set_store (
                     question_set_id TEXT PRIMARY KEY,
@@ -1488,6 +1541,121 @@ class SQLiteStore:
             (assessment_fact_item_id,),
         )
         return [KnowledgeSignalRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_graph_revision(self, record: GraphRevisionRecord) -> None:
+        self._insert_json_record(
+            table_name="graph_revisions",
+            pk_column="graph_revision_id",
+            pk_value=record.graph_revision_id,
+            record=record,
+            columns={
+                "project_id": record.project_id,
+                "scope_type": record.scope_type,
+                "scope_ref": record.scope_ref,
+                "revision_type": record.revision_type,
+                "based_on_revision_id": record.based_on_revision_id,
+                "status": record.status,
+                "node_count": record.node_count,
+                "relation_count": record.relation_count,
+                "created_by": record.created_by,
+                "created_at": record.created_at,
+                "activated_at": record.activated_at,
+            },
+        )
+
+    def get_graph_revision(self, graph_revision_id: str) -> GraphRevisionRecord | None:
+        row = self._fetch_one(
+            "SELECT payload FROM graph_revisions WHERE graph_revision_id = ?",
+            (graph_revision_id,),
+        )
+        if row is None:
+            return None
+        return GraphRevisionRecord.from_json(row["payload"])
+
+    def insert_graph_nodes(self, records: list[KnowledgeNodeRecord]) -> None:
+        with self._connect() as conn:
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO graph_knowledge_nodes (
+                        knowledge_node_id,
+                        graph_revision_id,
+                        topic_key,
+                        node_type,
+                        confidence,
+                        status,
+                        created_at,
+                        updated_at,
+                        payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.knowledge_node_id,
+                        record.graph_revision_id,
+                        record.topic_key,
+                        record.node_type,
+                        record.confidence,
+                        record.status,
+                        record.created_at,
+                        record.updated_at,
+                        record.to_json(),
+                    ),
+                )
+
+    def list_graph_nodes(self, graph_revision_id: str) -> list[KnowledgeNodeRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM graph_knowledge_nodes
+            WHERE graph_revision_id = ?
+            ORDER BY topic_key, knowledge_node_id
+            """,
+            (graph_revision_id,),
+        )
+        return [KnowledgeNodeRecord.from_json(row["payload"]) for row in rows]
+
+    def upsert_active_graph_revision_pointer(self, record: ActiveGraphRevisionPointerRecord) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO active_graph_revision_pointers (
+                    project_id,
+                    scope_type,
+                    scope_ref,
+                    active_graph_revision_id,
+                    updated_at,
+                    updated_by,
+                    payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.project_id,
+                    record.scope_type,
+                    record.scope_ref,
+                    record.active_graph_revision_id,
+                    record.updated_at,
+                    record.updated_by,
+                    record.to_json(),
+                ),
+            )
+
+    def get_active_graph_revision_pointer(
+        self,
+        project_id: str,
+        scope_type: str,
+        scope_ref: str,
+    ) -> ActiveGraphRevisionPointerRecord | None:
+        row = self._fetch_one(
+            """
+            SELECT payload
+            FROM active_graph_revision_pointers
+            WHERE project_id = ? AND scope_type = ? AND scope_ref = ?
+            """,
+            (project_id, scope_type, scope_ref),
+        )
+        if row is None:
+            return None
+        return ActiveGraphRevisionPointerRecord.from_json(row["payload"])
 
     def upsert_question_set(self, question_set: QuestionSet) -> None:
         payload = question_set.to_json()

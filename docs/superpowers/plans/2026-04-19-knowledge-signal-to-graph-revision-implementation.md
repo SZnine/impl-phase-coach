@@ -246,7 +246,7 @@ git commit -m "feat: add graph projection checkpoint records"
 - Modify: `review_gate/storage_sqlite.py`
 - Modify: `tests/test_checkpoint_storage.py`
 
-- [ ] **Step 1: Write failing graph storage test**
+- [x] **Step 1: Write failing graph storage test**
 
 Add these imports to the checkpoint model import list in `tests/test_checkpoint_storage.py`:
 
@@ -316,7 +316,7 @@ def test_checkpoint_storage_round_trips_graph_projection_records(tmp_path: Path)
     assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") == pointer
 ```
 
-- [ ] **Step 2: Run graph storage test to verify it fails**
+- [x] **Step 2: Run graph storage test to verify it fails**
 
 Run:
 
@@ -326,7 +326,7 @@ $env:PYTHONPATH='.'; pytest tests/test_checkpoint_storage.py::test_checkpoint_st
 
 Expected: FAIL because `SQLiteStore` has no graph revision methods.
 
-- [ ] **Step 3: Add imports and schema**
+- [x] **Step 3: Add imports and schema**
 
 In `review_gate/storage_sqlite.py`, add these records to the `review_gate.checkpoint_models` import list:
 
@@ -390,7 +390,7 @@ CREATE TABLE IF NOT EXISTS active_graph_revision_pointers (
 );
 ```
 
-- [ ] **Step 4: Add storage methods**
+- [x] **Step 4: Add storage methods**
 
 Add these methods near the existing knowledge signal storage methods:
 
@@ -511,7 +511,7 @@ Add these methods near the existing knowledge signal storage methods:
         return ActiveGraphRevisionPointerRecord.from_json(row["payload"])
 ```
 
-- [ ] **Step 5: Run graph storage test to verify it passes**
+- [x] **Step 5: Run graph storage test to verify it passes**
 
 Run:
 
@@ -521,7 +521,7 @@ $env:PYTHONPATH='.'; pytest tests/test_checkpoint_storage.py::test_checkpoint_st
 
 Expected: PASS.
 
-- [ ] **Step 6: Add active pointer replacement test**
+- [x] **Step 6: Add active pointer replacement test**
 
 Append this test:
 
@@ -593,7 +593,7 @@ def test_active_graph_revision_pointer_replaces_previous_revision(tmp_path: Path
     assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") == replacement
 ```
 
-- [ ] **Step 7: Run storage tests**
+- [x] **Step 7: Run storage tests**
 
 Run:
 
@@ -603,7 +603,7 @@ $env:PYTHONPATH='.'; pytest tests/test_checkpoint_storage.py -q
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit Task 2**
+- [x] **Step 8: Commit Task 2**
 
 Run:
 

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from review_gate.checkpoint_models import (
+    ActiveGraphRevisionPointerRecord,
     AnswerBatchRecord,
     AnswerItemRecord,
     AssessmentFactBatchRecord,
@@ -8,6 +9,8 @@ from review_gate.checkpoint_models import (
     EvaluationBatchRecord,
     EvaluationItemRecord,
     EvidenceSpanRecord,
+    GraphRevisionRecord,
+    KnowledgeNodeRecord,
     KnowledgeSignalRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
@@ -244,6 +247,130 @@ def test_knowledge_signal_storage_does_not_write_legacy_graph_tables(tmp_path: P
 
     assert store.list_knowledge_nodes() == []
     assert store.list_knowledge_relations() == []
+
+
+def test_checkpoint_storage_round_trips_graph_projection_records(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "checkpoint.db")
+    store.initialize()
+
+    revision = GraphRevisionRecord(
+        graph_revision_id="gr-proj-1-stage-1-20260409120400",
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        revision_type="deterministic_signal_projection",
+        based_on_revision_id=None,
+        source_fact_batch_ids=["afb-1"],
+        source_signal_ids=["ks-1"],
+        status="active",
+        revision_summary="1 signal projected into 1 node",
+        node_count=1,
+        relation_count=0,
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-09T12:04:00Z",
+        activated_at="2026-04-09T12:04:00Z",
+        payload={"projector_version": "signal-graph-v1"},
+    )
+    node = KnowledgeNodeRecord(
+        knowledge_node_id="kn-gr-proj-1-stage-1-20260409120400-proposal-execution-separation",
+        graph_revision_id="gr-proj-1-stage-1-20260409120400",
+        topic_key="proposal-execution-separation",
+        label="proposal execution separation",
+        node_type="weakness_topic",
+        description="Answer still mixes proposal status with execution status.",
+        source_signal_ids=["ks-1"],
+        supporting_fact_ids=["afi-1"],
+        confidence=0.8,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-09T12:04:00Z",
+        updated_at="2026-04-09T12:04:00Z",
+        payload={"signal_types": ["weakness"]},
+    )
+    pointer = ActiveGraphRevisionPointerRecord(
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        active_graph_revision_id="gr-proj-1-stage-1-20260409120400",
+        updated_at="2026-04-09T12:04:00Z",
+        updated_by="knowledge_signal_graph_projector",
+        payload={"reason": "deterministic projection completed"},
+    )
+
+    store.insert_graph_revision(revision)
+    store.insert_graph_nodes([node])
+    store.upsert_active_graph_revision_pointer(pointer)
+
+    assert store.get_graph_revision("gr-proj-1-stage-1-20260409120400") == revision
+    assert store.list_graph_nodes("gr-proj-1-stage-1-20260409120400") == [node]
+    assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") == pointer
+
+
+def test_active_graph_revision_pointer_replaces_previous_revision(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "checkpoint.db")
+    store.initialize()
+    first_revision = GraphRevisionRecord(
+        graph_revision_id="gr-1",
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        revision_type="deterministic_signal_projection",
+        based_on_revision_id=None,
+        source_fact_batch_ids=["afb-1"],
+        source_signal_ids=["ks-1"],
+        status="active",
+        revision_summary="first",
+        node_count=1,
+        relation_count=0,
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-09T12:04:00Z",
+        activated_at="2026-04-09T12:04:00Z",
+        payload={},
+    )
+    second_revision = GraphRevisionRecord(
+        graph_revision_id="gr-2",
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        revision_type="deterministic_signal_projection",
+        based_on_revision_id="gr-1",
+        source_fact_batch_ids=["afb-2"],
+        source_signal_ids=["ks-2"],
+        status="active",
+        revision_summary="second",
+        node_count=1,
+        relation_count=0,
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-09T12:05:00Z",
+        activated_at="2026-04-09T12:05:00Z",
+        payload={},
+    )
+    store.insert_graph_revision(first_revision)
+    store.insert_graph_revision(second_revision)
+    store.upsert_active_graph_revision_pointer(
+        ActiveGraphRevisionPointerRecord(
+            project_id="proj-1",
+            scope_type="stage",
+            scope_ref="stage-1",
+            active_graph_revision_id="gr-1",
+            updated_at="2026-04-09T12:04:00Z",
+            updated_by="knowledge_signal_graph_projector",
+            payload={},
+        )
+    )
+    replacement = ActiveGraphRevisionPointerRecord(
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        active_graph_revision_id="gr-2",
+        updated_at="2026-04-09T12:05:00Z",
+        updated_by="knowledge_signal_graph_projector",
+        payload={"reason": "new projection"},
+    )
+
+    store.upsert_active_graph_revision_pointer(replacement)
+
+    assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") == replacement
 
 
 def _seed_minimal_assessment_fact(store: SQLiteStore) -> None:
