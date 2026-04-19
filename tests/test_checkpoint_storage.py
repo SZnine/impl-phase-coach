@@ -219,6 +219,33 @@ def test_checkpoint_storage_round_trips_knowledge_signals(tmp_path: Path) -> Non
     assert store.list_knowledge_signals_for_fact_batch("afb-1") == [replacement]
 
 
+def test_knowledge_signal_storage_does_not_write_legacy_graph_tables(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "checkpoint.db")
+    store.initialize()
+    _seed_minimal_assessment_fact(store)
+
+    signal = KnowledgeSignalRecord(
+        signal_id="ks-afi-1-weakness-proposal-execution-separation",
+        assessment_fact_batch_id="afb-1",
+        assessment_fact_item_id="afi-1",
+        source_evaluation_item_id="ei-1",
+        signal_type="weakness",
+        topic_key="proposal-execution-separation",
+        polarity="negative",
+        summary="proposal execution separation",
+        confidence=0.8,
+        status="active",
+        projector_version="fact-signal-v1",
+        created_at="2026-04-09T12:03:00Z",
+        payload={"source_fact_type": "gap"},
+    )
+
+    store.insert_knowledge_signals([signal])
+
+    assert store.list_knowledge_nodes() == []
+    assert store.list_knowledge_relations() == []
+
+
 def _seed_minimal_assessment_fact(store: SQLiteStore) -> None:
     workflow_request = WorkflowRequestRecord(
         request_id="wr-1",

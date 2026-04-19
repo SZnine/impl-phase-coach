@@ -679,7 +679,7 @@ git commit -m "feat: project assessment facts into knowledge signals"
 **Files:**
 - Modify: `tests/test_checkpoint_storage.py`
 
-- [ ] **Step 1: Add regression test for legacy graph isolation**
+- [x] **Step 1: Add regression test for legacy graph isolation**
 
 Append this test:
 
@@ -711,7 +711,7 @@ def test_knowledge_signal_storage_does_not_write_legacy_graph_tables(tmp_path) -
     assert store.list_knowledge_relations() == []
 ```
 
-- [ ] **Step 2: Run the legacy isolation test**
+- [x] **Step 2: Run the legacy isolation test**
 
 Run:
 
@@ -721,7 +721,7 @@ pytest tests/test_checkpoint_storage.py::test_knowledge_signal_storage_does_not_
 
 Expected: PASS once Task 2 is complete. If it fails because `list_knowledge_nodes` requires a profile id in the current implementation, call `store.list_knowledge_nodes(None)` instead and keep the assertion as an empty list.
 
-- [ ] **Step 3: Run focused migration entrance tests**
+- [x] **Step 3: Run focused migration entrance tests**
 
 Run:
 
@@ -731,7 +731,7 @@ pytest tests/test_knowledge_signal_projector.py tests/test_checkpoint_storage.py
 
 Expected: PASS.
 
-- [ ] **Step 4: Run related checkpoint regression tests**
+- [x] **Step 4: Run related checkpoint regression tests**
 
 Run:
 
@@ -741,7 +741,7 @@ pytest tests/test_assessment_synthesizer.py tests/test_checkpoint_storage.py -q
 
 Expected: PASS, with existing Windows cleanup warnings acceptable if tests pass.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 Run:
 
