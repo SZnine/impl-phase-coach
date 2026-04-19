@@ -8,12 +8,16 @@ from review_gate.action_dtos import SubmitAnswerRequest
 from review_gate.answer_checkpoint_writer import AnswerCheckpointWriter, CheckpointWriteResult
 from review_gate.assessment_synthesizer import AssessmentSynthesizer
 from review_gate.checkpoint_models import (
+    ActiveGraphRevisionPointerRecord,
     AnswerBatchRecord,
     AnswerItemRecord,
     AssessmentFactBatchRecord,
     AssessmentFactItemRecord,
     EvaluationBatchRecord,
     EvaluationItemRecord,
+    GraphRevisionRecord,
+    KnowledgeNodeRecord,
+    KnowledgeSignalRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
     WorkflowRequestRecord,
@@ -110,6 +114,11 @@ def _seed_generated_question_chain(store: SQLiteStore, *, request_id: str, creat
     )
 
 
+class FailingGraphProjector:
+    def project(self, **_: object) -> object:
+        raise RuntimeError("graph projection failed")
+
+
 def test_answer_checkpoint_writer_persists_submit_chain(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
@@ -138,6 +147,10 @@ def test_answer_checkpoint_writer_persists_submit_chain(tmp_path: Path) -> None:
         answer_batch_id="ab-req-submit-1",
         evaluation_batch_id="eb-req-submit-1",
         assessment_fact_batch_id="afb-eb-req-submit-1",
+        assessment_fact_item_count=1,
+        knowledge_signal_count=1,
+        graph_revision_id="gr-proj-1-stage-stage-1-20260410110000",
+        graph_node_count=1,
     )
     assert store.get_workflow_request("req-submit-1") == WorkflowRequestRecord(
         request_id="req-submit-1",
@@ -194,6 +207,93 @@ def test_answer_checkpoint_writer_persists_submit_chain(tmp_path: Path) -> None:
             },
         )
     ]
+    signal_id = (
+        "ks-afi-ei-req-submit-1-0-proposal-execution-separation"
+        "-weakness-proposal-execution-separation"
+    )
+    assert store.list_knowledge_signals_for_fact_batch("afb-eb-req-submit-1") == [
+        KnowledgeSignalRecord(
+            signal_id=signal_id,
+            assessment_fact_batch_id="afb-eb-req-submit-1",
+            assessment_fact_item_id="afi-ei-req-submit-1-0-proposal-execution-separation",
+            source_evaluation_item_id="ei-req-submit-1-0",
+            signal_type="weakness",
+            topic_key="proposal-execution-separation",
+            polarity="negative",
+            summary="proposal execution separation",
+            confidence=0.8,
+            status="active",
+            projector_version="fact-signal-v1",
+            created_at="2026-04-10T11:00:00Z",
+            payload={
+                "source_fact_type": "gap",
+                "source_title": "proposal execution separation",
+                "description": "Still mixes proposal and execution.",
+                "source_payload": {
+                    "description": "Still mixes proposal and execution.",
+                    "dimension_refs": ["understanding", "causality"],
+                    "evidence_span_ids": [],
+                },
+                "fact_batch_synthesizer_version": "first-checkpoint-v1",
+            },
+        )
+    ]
+    assert store.get_graph_revision("gr-proj-1-stage-stage-1-20260410110000") == GraphRevisionRecord(
+        graph_revision_id="gr-proj-1-stage-stage-1-20260410110000",
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        revision_type="deterministic_signal_projection",
+        based_on_revision_id=None,
+        source_fact_batch_ids=["afb-eb-req-submit-1"],
+        source_signal_ids=[signal_id],
+        status="active",
+        revision_summary="1 signals projected into 1 nodes",
+        node_count=1,
+        relation_count=0,
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-10T11:00:00Z",
+        activated_at="2026-04-10T11:00:00Z",
+        payload={"projector_version": "signal-graph-v1"},
+    )
+    assert store.list_graph_nodes("gr-proj-1-stage-stage-1-20260410110000") == [
+        KnowledgeNodeRecord(
+            knowledge_node_id=(
+                "kn-gr-proj-1-stage-stage-1-20260410110000"
+                "-proposal-execution-separation"
+            ),
+            graph_revision_id="gr-proj-1-stage-stage-1-20260410110000",
+            topic_key="proposal-execution-separation",
+            label="proposal execution separation",
+            node_type="weakness_topic",
+            description="Still mixes proposal and execution.",
+            source_signal_ids=[signal_id],
+            supporting_fact_ids=["afi-ei-req-submit-1-0-proposal-execution-separation"],
+            confidence=0.8,
+            status="active",
+            created_by="knowledge_signal_graph_projector",
+            created_at="2026-04-10T11:00:00Z",
+            updated_at="2026-04-10T11:00:00Z",
+            payload={
+                "projector_version": "signal-graph-v1",
+                "signal_types": ["weakness"],
+                "polarity_counts": {"negative": 1},
+            },
+        )
+    ]
+    assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") == (
+        ActiveGraphRevisionPointerRecord(
+            project_id="proj-1",
+            scope_type="stage",
+            scope_ref="stage-1",
+            active_graph_revision_id="gr-proj-1-stage-stage-1-20260410110000",
+            updated_at="2026-04-10T11:00:00Z",
+            updated_by="knowledge_signal_graph_projector",
+            payload={"projector_version": "signal-graph-v1"},
+        )
+    )
+    assert store.list_knowledge_nodes() == []
+    assert store.list_knowledge_relations() == []
     assert store.get_evaluation_batch("eb-req-submit-1") == EvaluationBatchRecord(
         evaluation_batch_id="eb-req-submit-1",
         answer_batch_id="ab-req-submit-1",
@@ -347,6 +447,40 @@ def test_answer_checkpoint_writer_uses_assessment_synthesizer_for_multiple_gaps(
     ]
 
 
+def test_answer_checkpoint_writer_skips_graph_revision_when_assessment_has_no_signals(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    writer = AnswerCheckpointWriter(store=store, synthesizer=AssessmentSynthesizer())
+    _seed_generated_question_chain(store, request_id="req-qgen-1", created_at="2026-04-10T10:05:00Z")
+
+    result = writer.write(
+        request=_writer_request(
+            request_id="req-submit-no-signal",
+            answer_text="No diagnosed gaps in this answer.",
+            created_at="2026-04-10T11:20:00Z",
+        ),
+        resolved_chain=_resolved_chain(),
+        assessment={
+            "verdict": "pass",
+            "score": 0.95,
+            "summary": "No durable gaps detected.",
+            "gaps": [],
+            "dimensions": ["understanding"],
+        },
+    )
+
+    assert result.assessment_fact_batch_id == "afb-eb-req-submit-no-signal"
+    assert result.assessment_fact_item_count == 0
+    assert result.knowledge_signal_count == 0
+    assert result.graph_revision_id is None
+    assert result.graph_node_count == 0
+    assert store.list_assessment_fact_items("afb-eb-req-submit-no-signal") == []
+    assert store.list_knowledge_signals_for_fact_batch("afb-eb-req-submit-no-signal") == []
+    assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") is None
+
+
 def test_answer_checkpoint_writer_materializes_fallback_question_chain(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
@@ -490,3 +624,57 @@ def test_answer_checkpoint_writer_leaves_submit_workflow_in_progress_on_downstre
         supersedes_run_id=None,
         payload={"request_id": "req-submit-4"},
     )
+
+
+def test_answer_checkpoint_writer_leaves_submit_workflow_in_progress_on_graph_projection_failure(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    writer = AnswerCheckpointWriter(
+        store=store,
+        synthesizer=AssessmentSynthesizer(),
+        graph_projector=FailingGraphProjector(),  # type: ignore[arg-type]
+    )
+    _seed_generated_question_chain(store, request_id="req-qgen-1", created_at="2026-04-10T10:05:00Z")
+
+    with pytest.raises(RuntimeError, match="graph projection failed"):
+        writer.write(
+            request=_writer_request(
+                request_id="req-submit-graph-fail",
+                answer_text="We split state and scoring boundaries.",
+                created_at="2026-04-10T11:25:00Z",
+            ),
+            resolved_chain=_resolved_chain(),
+            assessment={
+                "verdict": "partial",
+                "score": 0.6,
+                "summary": "Graph projection failure should not finalize workflow.",
+                "gaps": ["proposal-execution-separation"],
+                "dimensions": ["understanding"],
+            },
+        )
+
+    assert store.get_workflow_request("req-submit-graph-fail") == WorkflowRequestRecord(
+        request_id="req-submit-graph-fail",
+        request_type="assessment",
+        project_id="proj-1",
+        stage_id="stage-1",
+        requested_by="local-user",
+        source="question_detail",
+        status="in_progress",
+        created_at="2026-04-10T11:25:00Z",
+        payload={"request_id": "req-submit-graph-fail"},
+    )
+    assert store.get_workflow_run("run-req-submit-graph-fail") == WorkflowRunRecord(
+        run_id="run-req-submit-graph-fail",
+        request_id="req-submit-graph-fail",
+        run_type="assessment",
+        status="in_progress",
+        started_at="2026-04-10T11:25:00Z",
+        finished_at="2026-04-10T11:25:00Z",
+        supersedes_run_id=None,
+        payload={"request_id": "req-submit-graph-fail"},
+    )
+    assert store.list_knowledge_signals_for_fact_batch("afb-eb-req-submit-graph-fail") != []
+    assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") is None

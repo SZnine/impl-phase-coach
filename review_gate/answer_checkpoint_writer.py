@@ -16,6 +16,8 @@ from review_gate.checkpoint_models import (
     WorkflowRunRecord,
 )
 from review_gate.generated_chain_resolver import ResolvedQuestionChain
+from review_gate.knowledge_graph_projector import KnowledgeSignalGraphProjector
+from review_gate.knowledge_signal_projector import AssessmentFactSignalProjector
 from review_gate.storage_sqlite import SQLiteStore
 
 
@@ -26,12 +28,25 @@ class CheckpointWriteResult:
     answer_batch_id: str
     evaluation_batch_id: str
     assessment_fact_batch_id: str
+    assessment_fact_item_count: int = 0
+    knowledge_signal_count: int = 0
+    graph_revision_id: str | None = None
+    graph_node_count: int = 0
 
 
 class AnswerCheckpointWriter:
-    def __init__(self, *, store: SQLiteStore, synthesizer: AssessmentSynthesizer) -> None:
+    def __init__(
+        self,
+        *,
+        store: SQLiteStore,
+        synthesizer: AssessmentSynthesizer,
+        signal_projector: AssessmentFactSignalProjector | None = None,
+        graph_projector: KnowledgeSignalGraphProjector | None = None,
+    ) -> None:
         self._store = store
         self._synthesizer = synthesizer
+        self._signal_projector = signal_projector or AssessmentFactSignalProjector()
+        self._graph_projector = graph_projector or KnowledgeSignalGraphProjector()
 
     def write(
         self,
@@ -159,6 +174,28 @@ class AnswerCheckpointWriter:
         self._store.insert_assessment_fact_batch(fact_batch)
         self._store.insert_assessment_fact_items(fact_items)
 
+        knowledge_signals = self._signal_projector.project(
+            fact_batch=fact_batch,
+            fact_items=fact_items,
+        )
+        self._store.insert_knowledge_signals(knowledge_signals)
+
+        graph_revision_id: str | None = None
+        graph_node_count = 0
+        if knowledge_signals:
+            graph_revision, graph_nodes, active_pointer = self._graph_projector.project(
+                project_id=request.project_id,
+                scope_type="stage",
+                scope_ref=request.stage_id,
+                signals=knowledge_signals,
+                created_at=request.created_at,
+            )
+            self._store.insert_graph_revision(graph_revision)
+            self._store.insert_graph_nodes(graph_nodes)
+            self._store.upsert_active_graph_revision_pointer(active_pointer)
+            graph_revision_id = graph_revision.graph_revision_id
+            graph_node_count = len(graph_nodes)
+
         self._store.insert_workflow_request(
             WorkflowRequestRecord(
                 request_id=request.request_id,
@@ -191,6 +228,10 @@ class AnswerCheckpointWriter:
             answer_batch_id=answer_batch_id,
             evaluation_batch_id=evaluation_batch_id,
             assessment_fact_batch_id=fact_batch.assessment_fact_batch_id,
+            assessment_fact_item_count=len(fact_items),
+            knowledge_signal_count=len(knowledge_signals),
+            graph_revision_id=graph_revision_id,
+            graph_node_count=graph_node_count,
         )
 
     def _materialize_fallback_question_chain(
