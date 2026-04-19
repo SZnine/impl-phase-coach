@@ -138,7 +138,7 @@ git commit -m "feat: add knowledge signal checkpoint model"
 - Modify: `review_gate/storage_sqlite.py`
 - Modify: `tests/test_checkpoint_storage.py`
 
-- [ ] **Step 1: Write the failing storage round-trip test**
+- [x] **Step 1: Write the failing storage round-trip test**
 
 Add `KnowledgeSignalRecord` to the import list in `tests/test_checkpoint_storage.py`, then append this test:
 
@@ -321,7 +321,7 @@ def _seed_minimal_assessment_fact(store: SQLiteStore) -> None:
     store.insert_assessment_fact_items([fact_item])
 ```
 
-- [ ] **Step 2: Run the storage test to verify it fails**
+- [x] **Step 2: Run the storage test to verify it fails**
 
 Run:
 
@@ -331,7 +331,7 @@ pytest tests/test_checkpoint_storage.py::test_checkpoint_storage_round_trips_kno
 
 Expected: FAIL because `SQLiteStore` has no `insert_knowledge_signals` method.
 
-- [ ] **Step 3: Add imports and schema**
+- [x] **Step 3: Add imports and schema**
 
 In `review_gate/storage_sqlite.py`, add `KnowledgeSignalRecord` to the `review_gate.checkpoint_models` import list.
 
@@ -365,7 +365,7 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_signals_type_topic
     ON knowledge_signals(signal_type, topic_key);
 ```
 
-- [ ] **Step 4: Add storage methods**
+- [x] **Step 4: Add storage methods**
 
 Add these methods near the assessment fact methods in `review_gate/storage_sqlite.py`:
 
@@ -431,7 +431,7 @@ Add these methods near the assessment fact methods in `review_gate/storage_sqlit
         return [KnowledgeSignalRecord.from_json(row["payload"]) for row in rows]
 ```
 
-- [ ] **Step 5: Run the storage test to verify it passes**
+- [x] **Step 5: Run the storage test to verify it passes**
 
 Run:
 
@@ -441,7 +441,7 @@ pytest tests/test_checkpoint_storage.py::test_checkpoint_storage_round_trips_kno
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 Run:
 

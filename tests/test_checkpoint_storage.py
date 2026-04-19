@@ -8,6 +8,7 @@ from review_gate.checkpoint_models import (
     EvaluationBatchRecord,
     EvaluationItemRecord,
     EvidenceSpanRecord,
+    KnowledgeSignalRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
     WorkflowRequestRecord,
@@ -169,3 +170,178 @@ def test_sqlite_store_round_trips_first_checkpoint_chain(tmp_path: Path) -> None
     assert store.list_evidence_spans("ei-1") == [evidence_span]
     assert store.get_latest_assessment_fact_batch("proj-1", "stage-1") == fact_batch
     assert store.list_assessment_fact_items("afb-1") == [fact_item]
+
+
+def test_checkpoint_storage_round_trips_knowledge_signals(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "checkpoint.db")
+    store.initialize()
+    _seed_minimal_assessment_fact(store)
+
+    signal = KnowledgeSignalRecord(
+        signal_id="ks-afi-1-weakness-proposal-execution-separation",
+        assessment_fact_batch_id="afb-1",
+        assessment_fact_item_id="afi-1",
+        source_evaluation_item_id="ei-1",
+        signal_type="weakness",
+        topic_key="proposal-execution-separation",
+        polarity="negative",
+        summary="proposal execution separation",
+        confidence=0.8,
+        status="active",
+        projector_version="fact-signal-v1",
+        created_at="2026-04-09T12:03:00Z",
+        payload={"source_fact_type": "gap"},
+    )
+
+    store.insert_knowledge_signals([signal])
+
+    assert store.list_knowledge_signals_for_fact_batch("afb-1") == [signal]
+    assert store.list_knowledge_signals_for_fact_item("afi-1") == [signal]
+
+    replacement = KnowledgeSignalRecord(
+        signal_id="ks-afi-1-weakness-proposal-execution-separation",
+        assessment_fact_batch_id="afb-1",
+        assessment_fact_item_id="afi-1",
+        source_evaluation_item_id="ei-1",
+        signal_type="weakness",
+        topic_key="proposal-execution-separation",
+        polarity="negative",
+        summary="updated proposal execution separation",
+        confidence=0.85,
+        status="active",
+        projector_version="fact-signal-v1",
+        created_at="2026-04-09T12:03:30Z",
+        payload={"source_fact_type": "gap", "description": "updated"},
+    )
+
+    store.insert_knowledge_signals([replacement])
+
+    assert store.list_knowledge_signals_for_fact_batch("afb-1") == [replacement]
+
+
+def _seed_minimal_assessment_fact(store: SQLiteStore) -> None:
+    workflow_request = WorkflowRequestRecord(
+        request_id="wr-1",
+        request_type="review",
+        project_id="proj-1",
+        stage_id="stage-1",
+        requested_by="user",
+        source="test",
+        status="accepted",
+        created_at="2026-04-09T12:00:00Z",
+        payload={},
+    )
+    workflow_run = WorkflowRunRecord(
+        run_id="run-1",
+        request_id="wr-1",
+        run_type="review",
+        status="completed",
+        started_at="2026-04-09T12:00:00Z",
+        finished_at="2026-04-09T12:04:00Z",
+        payload={},
+    )
+    question_batch = QuestionBatchRecord(
+        question_batch_id="qb-1",
+        workflow_run_id="run-1",
+        project_id="proj-1",
+        stage_id="stage-1",
+        generated_by="project_agent",
+        source="test",
+        batch_goal="checkpoint",
+        entry_question_id="q-1",
+        status="completed",
+        created_at="2026-04-09T12:00:00Z",
+        payload={},
+    )
+    question_item = QuestionItemRecord(
+        question_id="q-1",
+        question_batch_id="qb-1",
+        question_type="conceptual",
+        prompt="Explain proposal and execution separation.",
+        intent="diagnose gap",
+        difficulty_level="medium",
+        order_index=0,
+        status="active",
+        created_at="2026-04-09T12:00:00Z",
+        payload={},
+    )
+    answer_batch = AnswerBatchRecord(
+        answer_batch_id="ab-1",
+        question_batch_id="qb-1",
+        workflow_run_id="run-1",
+        submitted_by="user",
+        submission_mode="batch",
+        completion_status="completed",
+        submitted_at="2026-04-09T12:01:00Z",
+        status="submitted",
+        payload={},
+    )
+    answer_item = AnswerItemRecord(
+        answer_item_id="ai-1",
+        answer_batch_id="ab-1",
+        question_id="q-1",
+        answered_by="user",
+        answer_text="They are the same thing.",
+        answer_format="plain_text",
+        order_index=0,
+        answered_at="2026-04-09T12:01:00Z",
+        status="submitted",
+        payload={},
+    )
+    evaluation_batch = EvaluationBatchRecord(
+        evaluation_batch_id="eb-1",
+        answer_batch_id="ab-1",
+        workflow_run_id="run-1",
+        project_id="proj-1",
+        stage_id="stage-1",
+        evaluated_by="evaluator_agent",
+        evaluator_version="test-v1",
+        confidence=0.8,
+        status="completed",
+        evaluated_at="2026-04-09T12:02:00Z",
+        payload={},
+    )
+    evaluation_item = EvaluationItemRecord(
+        evaluation_item_id="ei-1",
+        evaluation_batch_id="eb-1",
+        question_id="q-1",
+        answer_item_id="ai-1",
+        local_verdict="partial",
+        confidence=0.8,
+        status="completed",
+        evaluated_at="2026-04-09T12:02:00Z",
+        payload={"diagnosed_gaps": ["proposal-execution-separation"]},
+    )
+    fact_batch = AssessmentFactBatchRecord(
+        assessment_fact_batch_id="afb-1",
+        evaluation_batch_id="eb-1",
+        workflow_run_id="run-1",
+        synthesized_by="assessment_synthesizer",
+        synthesizer_version="v1",
+        status="completed",
+        synthesized_at="2026-04-09T12:03:00Z",
+        payload={},
+    )
+    fact_item = AssessmentFactItemRecord(
+        assessment_fact_item_id="afi-1",
+        assessment_fact_batch_id="afb-1",
+        source_evaluation_item_id="ei-1",
+        fact_type="gap",
+        topic_key="proposal-execution-separation",
+        title="proposal execution separation",
+        confidence=0.8,
+        status="active",
+        created_at="2026-04-09T12:03:00Z",
+        payload={"description": "still mixed"},
+    )
+
+    store.insert_workflow_request(workflow_request)
+    store.insert_workflow_run(workflow_run)
+    store.insert_question_batch(question_batch)
+    store.insert_question_items([question_item])
+    store.insert_answer_batch(answer_batch)
+    store.insert_answer_items([answer_item])
+    store.insert_evaluation_batch(evaluation_batch)
+    store.insert_evaluation_items([evaluation_item])
+    store.insert_assessment_fact_batch(fact_batch)
+    store.insert_assessment_fact_items([fact_item])

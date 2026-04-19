@@ -29,6 +29,7 @@ from review_gate.checkpoint_models import (
     EvaluationBatchRecord,
     EvaluationItemRecord,
     EvidenceSpanRecord,
+    KnowledgeSignalRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
     WorkflowRequestRecord,
@@ -395,6 +396,32 @@ class SQLiteStore:
 
                 CREATE INDEX IF NOT EXISTS idx_assessment_fact_items_fact_type_topic_key
                     ON assessment_fact_items(fact_type, topic_key);
+
+                CREATE TABLE IF NOT EXISTS knowledge_signals (
+                    signal_id TEXT PRIMARY KEY,
+                    assessment_fact_batch_id TEXT NOT NULL,
+                    assessment_fact_item_id TEXT NOT NULL,
+                    source_evaluation_item_id TEXT,
+                    signal_type TEXT NOT NULL,
+                    topic_key TEXT NOT NULL,
+                    polarity TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    projector_version TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (assessment_fact_batch_id) REFERENCES assessment_fact_batches(assessment_fact_batch_id),
+                    FOREIGN KEY (assessment_fact_item_id) REFERENCES assessment_fact_items(assessment_fact_item_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_signals_fact_batch_id
+                    ON knowledge_signals(assessment_fact_batch_id);
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_signals_fact_item_id
+                    ON knowledge_signals(assessment_fact_item_id);
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_signals_type_topic
+                    ON knowledge_signals(signal_type, topic_key);
 
                 CREATE TABLE IF NOT EXISTS question_set_store (
                     question_set_id TEXT PRIMARY KEY,
@@ -1395,6 +1422,72 @@ class SQLiteStore:
             (assessment_fact_batch_id,),
         )
         return [AssessmentFactItemRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_knowledge_signals(self, records: list[KnowledgeSignalRecord]) -> None:
+        with self._connect() as conn:
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO knowledge_signals (
+                        signal_id,
+                        assessment_fact_batch_id,
+                        assessment_fact_item_id,
+                        source_evaluation_item_id,
+                        signal_type,
+                        topic_key,
+                        polarity,
+                        confidence,
+                        status,
+                        projector_version,
+                        created_at,
+                        payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.signal_id,
+                        record.assessment_fact_batch_id,
+                        record.assessment_fact_item_id,
+                        record.source_evaluation_item_id,
+                        record.signal_type,
+                        record.topic_key,
+                        record.polarity,
+                        record.confidence,
+                        record.status,
+                        record.projector_version,
+                        record.created_at,
+                        record.to_json(),
+                    ),
+                )
+
+    def list_knowledge_signals_for_fact_batch(
+        self,
+        assessment_fact_batch_id: str,
+    ) -> list[KnowledgeSignalRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM knowledge_signals
+            WHERE assessment_fact_batch_id = ?
+            ORDER BY created_at, signal_id
+            """,
+            (assessment_fact_batch_id,),
+        )
+        return [KnowledgeSignalRecord.from_json(row["payload"]) for row in rows]
+
+    def list_knowledge_signals_for_fact_item(
+        self,
+        assessment_fact_item_id: str,
+    ) -> list[KnowledgeSignalRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM knowledge_signals
+            WHERE assessment_fact_item_id = ?
+            ORDER BY created_at, signal_id
+            """,
+            (assessment_fact_item_id,),
+        )
+        return [KnowledgeSignalRecord.from_json(row["payload"]) for row in rows]
 
     def upsert_question_set(self, question_set: QuestionSet) -> None:
         payload = question_set.to_json()
