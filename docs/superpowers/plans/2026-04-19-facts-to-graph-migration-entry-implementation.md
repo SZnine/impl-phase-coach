@@ -770,7 +770,7 @@ git status --short --branch
 
 Expected: only intentional tracked changes remain, plus pre-existing untracked `.env/`, `eval-live-smoke-*`, and `tmp_review_check*` directories if they still exist.
 
-- [ ] Push if the implementation commits are complete:
+- [x] Push if the implementation commits are complete:
 
 ```powershell
 git push
