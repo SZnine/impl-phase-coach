@@ -1017,7 +1017,7 @@ git commit -m "test: guard graph projection storage boundaries"
 
 ## Final Verification
 
-- [ ] Run focused tests:
+- [x] Run focused tests:
 
 ```powershell
 $env:PYTHONPATH='.'; pytest tests/test_knowledge_graph_projector.py tests/test_knowledge_signal_projector.py tests/test_checkpoint_storage.py tests/test_assessment_synthesizer.py -q
@@ -1025,7 +1025,7 @@ $env:PYTHONPATH='.'; pytest tests/test_knowledge_graph_projector.py tests/test_k
 
 Expected: PASS.
 
-- [ ] Check changed files:
+- [x] Check changed files:
 
 ```powershell
 git status --short --branch
