@@ -754,7 +754,7 @@ git commit -m "test: guard knowledge signal graph isolation"
 
 ## Final Verification
 
-- [ ] Run focused tests:
+- [x] Run focused tests:
 
 ```powershell
 pytest tests/test_knowledge_signal_projector.py tests/test_checkpoint_storage.py tests/test_assessment_synthesizer.py -q
@@ -762,7 +762,7 @@ pytest tests/test_knowledge_signal_projector.py tests/test_checkpoint_storage.py
 
 Expected: PASS.
 
-- [ ] Check changed files:
+- [x] Check changed files:
 
 ```powershell
 git status --short --branch
