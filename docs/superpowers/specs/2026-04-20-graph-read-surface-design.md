@@ -106,7 +106,7 @@ GET /api/knowledge/graph-main
 WorkspaceAPI.get_knowledge_graph_main_view(project_id, stage_id, cluster_id, node_id)
 ```
 
-其中 `cluster_id` 和 `node_id` 在新 graph path 中暂不参与过滤。它们只在 fallback profile path 中保留旧语义。
+其中 `cluster_id` 和 `node_id` 暂时只在 fallback profile path 中保留旧语义。只要调用方传入 `cluster_id` 或 `node_id`，本阶段直接走旧 profile-space path，直到新 Graph Layer 设计出 revision-scoped cluster / node selection 语义。
 
 ## 6. DTO 映射
 

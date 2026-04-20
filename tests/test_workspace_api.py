@@ -1,10 +1,16 @@
 import json
 
 from review_gate.action_dtos import ProposalActionRequest, SubmitAnswerRequest
+from review_gate.checkpoint_models import (
+    ActiveGraphRevisionPointerRecord,
+    GraphRevisionRecord,
+    KnowledgeNodeRecord,
+)
 from review_gate.domain import FocusExplanation
 from review_gate.profile_space_service import ProfileSpaceService
 from review_gate.proposal_center_service import ProposalCenterService
 from review_gate.review_flow_service import ReviewFlowService
+from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
     AssessmentSummaryDTO,
     FocusClusterCardDTO,
@@ -68,6 +74,55 @@ class CapturingAssessmentClient:
             "warnings": [],
             "confidence": 0.7 if self.verdict == "weak" else 0.8,
         }
+
+
+def _seed_active_graph_revision(store: SQLiteStore) -> None:
+    revision = GraphRevisionRecord(
+        graph_revision_id="gr-proj-1-stage-stage-1-20260420110000",
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        revision_type="deterministic_signal_projection",
+        based_on_revision_id=None,
+        source_fact_batch_ids=["afb-eb-req-graph-read"],
+        source_signal_ids=["ks-graph-read-surface"],
+        status="active",
+        revision_summary="1 signals projected into 1 nodes",
+        node_count=1,
+        relation_count=0,
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-20T11:00:00Z",
+        activated_at="2026-04-20T11:00:00Z",
+        payload={"projector_version": "signal-graph-v1"},
+    )
+    node = KnowledgeNodeRecord(
+        knowledge_node_id="kn-gr-proj-1-stage-stage-1-20260420110000-graph-read-surface",
+        graph_revision_id=revision.graph_revision_id,
+        topic_key="graph-read-surface",
+        label="Graph read surface",
+        node_type="weakness_topic",
+        description="The read side must consume the active graph revision.",
+        source_signal_ids=["ks-graph-read-surface"],
+        supporting_fact_ids=["afi-graph-read-surface"],
+        confidence=0.81,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-20T11:00:00Z",
+        updated_at="2026-04-20T11:00:00Z",
+        payload={"projector_version": "signal-graph-v1"},
+    )
+    pointer = ActiveGraphRevisionPointerRecord(
+        project_id="proj-1",
+        scope_type="stage",
+        scope_ref="stage-1",
+        active_graph_revision_id=revision.graph_revision_id,
+        updated_at="2026-04-20T11:00:00Z",
+        updated_by="knowledge_signal_graph_projector",
+        payload={"projector_version": "signal-graph-v1"},
+    )
+    store.insert_graph_revision(revision)
+    store.insert_graph_nodes([node])
+    store.upsert_active_graph_revision_pointer(pointer)
 
 
 def test_workspace_api_returns_home_view() -> None:
@@ -239,6 +294,52 @@ def test_workspace_api_returns_knowledge_map_summary_and_graph_main_view() -> No
     assert graph_main_view.nodes
     assert graph_main_view.nodes[0].label == "State and return value separation"
     assert graph_main_view.nodes[0].mastery_status == "partial"
+
+
+def test_workspace_api_graph_main_view_reads_active_graph_revision_before_profile_fallback(
+    tmp_path,
+) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    _seed_active_graph_revision(store)
+    profile_space = ProfileSpaceService.for_testing()
+    profile_space.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "a-profile-fallback",
+            "verdict": "partial",
+            "core_gaps": ["Profile fallback node"],
+            "misconceptions": [],
+        },
+    )
+    api = WorkspaceAPI(
+        flow=ReviewFlowService.for_testing(),
+        profile_space=profile_space,
+        checkpoint_store=store,
+    )
+
+    graph_main_view = api.get_knowledge_graph_main_view(project_id="proj-1", stage_id="stage-1")
+
+    assert graph_main_view.selected_cluster is None
+    assert graph_main_view.relations == []
+    assert len(graph_main_view.nodes) == 1
+    node = graph_main_view.nodes[0]
+    assert node.node_id == "kn-gr-proj-1-stage-stage-1-20260420110000-graph-read-surface"
+    assert node.label == "Graph read surface"
+    assert node.node_type == "weakness_topic"
+    assert node.abstract_level == "topic"
+    assert node.scope == "stage"
+    assert node.canonical_summary == "The read side must consume the active graph revision."
+    assert node.mastery_status == "unverified"
+    assert node.review_needed is True
+    assert node.relation_preview == []
+    assert node.evidence_summary == {
+        "topic_key": "graph-read-surface",
+        "confidence_percent": 81,
+        "signal_count": 1,
+        "fact_count": 1,
+    }
 
 
 def test_workspace_api_sorts_focus_clusters_by_reason_priority() -> None:

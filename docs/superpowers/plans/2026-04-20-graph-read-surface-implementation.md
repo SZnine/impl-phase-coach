@@ -278,10 +278,13 @@ Add these private methods before `get_knowledge_graph_main_view()`:
 At the start of `get_knowledge_graph_main_view()`, before reading from `_profile_space`, add:
 
 ```python
-        active_graph_view = self._get_active_graph_main_view(project_id, stage_id)
-        if active_graph_view is not None:
-            return active_graph_view
+        if cluster_id is None and node_id is None:
+            active_graph_view = self._get_active_graph_main_view(project_id, stage_id)
+            if active_graph_view is not None:
+                return active_graph_view
 ```
+
+Selection parameters still belong to the legacy profile-space graph-main path in this phase. This preserves existing demo/focus-cluster behavior until the new Graph Layer has revision-scoped cluster and node selection semantics.
 
 - [ ] **Step 6: Run the WorkspaceAPI active graph test**
 
@@ -459,7 +462,7 @@ git diff -- review_gate/view_dtos.py review_gate/workspace_api.py review_gate/ht
 
 Expected:
 - `WorkspaceAPI` has optional `checkpoint_store`.
-- `get_knowledge_graph_main_view()` tries active graph first and falls back to old profile-space logic.
+- `get_knowledge_graph_main_view()` tries active graph first only when no `cluster_id` or `node_id` is supplied, and falls back to old profile-space logic otherwise.
 - `create_default_workspace_api()` passes `checkpoint_store=store`.
 - No frontend, relation, maintenance, or projection-write files changed.
 
@@ -480,7 +483,7 @@ Expected: commit succeeds.
 
 Spec coverage:
 - New graph read path consumes `active_graph_revision_pointer -> graph_revision -> graph_nodes`.
-- Missing store, missing pointer, missing revision, or empty nodes falls back to profile-space behavior.
+- Missing store, missing pointer, missing revision, empty nodes, or selected `cluster_id` / `node_id` falls back to profile-space behavior.
 - Existing `/api/knowledge/graph-main` is reused; no endpoint is added.
 - `get_knowledge_graph_view()` stays unchanged.
 

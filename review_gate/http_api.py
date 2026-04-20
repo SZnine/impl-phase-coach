@@ -112,6 +112,7 @@ def create_default_workspace_api(
         profile_space=ProfileSpaceService.with_store(store),
         proposal_center=ProposalCenterService.with_store(store),
         session_store=JsonWorkspaceStateStore(resolved_session_path),
+        checkpoint_store=store,
     )
 
 

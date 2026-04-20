@@ -3,6 +3,7 @@ from review_gate.domain import WorkspaceSession
 from review_gate.profile_space_service import ProfileSpaceService
 from review_gate.proposal_center_service import ProposalCenterService
 from review_gate.review_flow_service import ReviewFlowService
+from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
     HomeProjectItemDTO,
     HomeViewDTO,
@@ -47,11 +48,13 @@ class WorkspaceAPI:
         profile_space: ProfileSpaceService | None = None,
         proposal_center: ProposalCenterService | None = None,
         session_store: JsonWorkspaceStateStore | None = None,
+        checkpoint_store: SQLiteStore | None = None,
     ) -> None:
         self._flow = flow
         self._profile_space = profile_space or ProfileSpaceService.for_testing()
         self._proposal_center = proposal_center or ProposalCenterService.for_testing()
         self._session_store = session_store
+        self._checkpoint_store = checkpoint_store
 
     def _default_workspace_session(self) -> WorkspaceSession:
         return WorkspaceSession(
@@ -306,6 +309,52 @@ class WorkspaceAPI:
             foundation_hotspots=foundation_hotspots,
         )
 
+    def _get_active_graph_main_view(
+        self,
+        project_id: str | None,
+        stage_id: str | None,
+    ) -> KnowledgeGraphMainViewDTO | None:
+        if self._checkpoint_store is None or project_id is None or stage_id is None:
+            return None
+
+        pointer = self._checkpoint_store.get_active_graph_revision_pointer(project_id, "stage", stage_id)
+        if pointer is None:
+            return None
+
+        revision = self._checkpoint_store.get_graph_revision(pointer.active_graph_revision_id)
+        if revision is None:
+            return None
+
+        nodes = self._checkpoint_store.list_graph_nodes(revision.graph_revision_id)
+        if not nodes:
+            return None
+
+        node_cards = [
+            KnowledgeNodeCardDTO(
+                node_id=node.knowledge_node_id,
+                label=node.label,
+                node_type=node.node_type,
+                abstract_level="topic",
+                scope=revision.scope_type,
+                canonical_summary=node.description,
+                mastery_status="unverified",
+                review_needed=node.node_type == "weakness_topic",
+                relation_preview=[],
+                evidence_summary={
+                    "topic_key": node.topic_key,
+                    "confidence_percent": round(node.confidence * 100),
+                    "signal_count": len(node.source_signal_ids),
+                    "fact_count": len(node.supporting_fact_ids),
+                },
+            )
+            for node in nodes
+        ]
+        return KnowledgeGraphMainViewDTO(
+            selected_cluster=None,
+            nodes=node_cards,
+            relations=[],
+        )
+
     def get_knowledge_graph_main_view(
         self,
         project_id: str | None = None,
@@ -313,6 +362,11 @@ class WorkspaceAPI:
         cluster_id: str | None = None,
         node_id: str | None = None,
     ) -> KnowledgeGraphMainViewDTO:
+        if cluster_id is None and node_id is None:
+            active_graph_view = self._get_active_graph_main_view(project_id, stage_id)
+            if active_graph_view is not None:
+                return active_graph_view
+
         nodes = self._profile_space.list_map_nodes(project_id, stage_id)
         states = self._profile_space.list_user_node_states(project_id, stage_id)
         state_by_node_id = {item["node_id"]: item for item in states}

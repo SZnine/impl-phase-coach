@@ -157,7 +157,7 @@ class KnowledgeNodeCardDTO(TransportModel):
     mastery_status: str
     review_needed: bool
     relation_preview: list[dict[str, str]] = field(default_factory=list)
-    evidence_summary: dict[str, int] = field(default_factory=dict)
+    evidence_summary: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

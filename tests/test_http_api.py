@@ -213,6 +213,45 @@ def test_http_api_returns_knowledge_map_summary_and_graph_main_views() -> None:
     assert all(":evidence-" not in node["node_id"] for node in graph_data["nodes"])
 
 
+def test_default_http_api_graph_main_reads_submit_side_active_graph_revision(tmp_path: Path) -> None:
+    db_path = tmp_path / "workbench.sqlite3"
+    session_path = tmp_path / "workspace-session.json"
+    client = TestClient(create_app(db_path=db_path, session_path=session_path))
+    submit_response = client.post(
+        "/api/actions/submit-answer",
+        json={
+            "request_id": "req-active-graph-main",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "question_detail",
+            "actor_id": "local-user",
+            "created_at": "2026-04-20T12:00:00Z",
+            "question_set_id": "set-1",
+            "question_id": "set-1-q-1",
+            "answer_text": "This answer is long enough to avoid the weak fallback verdict.",
+            "draft_id": None,
+        },
+    )
+
+    graph_response = client.get(
+        "/api/knowledge/graph-main",
+        params={"project_id": "proj-1", "stage_id": "stage-1"},
+    )
+
+    assert submit_response.status_code == 200
+    assert submit_response.json()["success"] is True
+    assert graph_response.status_code == 200
+    graph_data = graph_response.json()
+    assert graph_data["selected_cluster"] is None
+    assert graph_data["relations"] == []
+    assert graph_data["nodes"]
+    assert graph_data["nodes"][0]["node_type"] == "weakness_topic"
+    assert graph_data["nodes"][0]["mastery_status"] == "unverified"
+    assert graph_data["nodes"][0]["review_needed"] is True
+    assert graph_data["nodes"][0]["evidence_summary"]["signal_count"] == 1
+    assert graph_data["nodes"][0]["evidence_summary"]["fact_count"] == 1
+
+
 def test_http_api_returns_proposals_view() -> None:
     proposal_center = ProposalCenterService.for_testing()
     proposal_center.create_compression_proposals(
