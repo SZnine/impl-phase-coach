@@ -343,6 +343,87 @@ def test_workspace_api_graph_main_view_reads_active_graph_revision_before_profil
     }
 
 
+def test_workspace_api_graph_main_view_reads_active_graph_revision_relations(
+    tmp_path,
+) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    _seed_active_graph_revision(store)
+    graph_revision_id = "gr-proj-1-stage-stage-1-20260420110000"
+    source_node = KnowledgeNodeRecord(
+        knowledge_node_id=f"kn-{graph_revision_id}-boundary-discipline",
+        graph_revision_id=graph_revision_id,
+        topic_key="boundary-discipline",
+        label="Boundary discipline",
+        node_type="evidence_topic",
+        description="Boundary discipline can support graph read surface.",
+        source_signal_ids=["ks-boundary-discipline"],
+        supporting_fact_ids=["afi-boundary-discipline"],
+        confidence=0.83,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-20T11:00:00Z",
+        updated_at="2026-04-20T11:00:00Z",
+        payload={"projector_version": "signal-graph-v1"},
+    )
+    relation = KnowledgeRelationRecord(
+        knowledge_relation_id=f"kr-{graph_revision_id}-boundary-discipline-supports-graph-read-surface",
+        graph_revision_id=graph_revision_id,
+        from_node_id=source_node.knowledge_node_id,
+        to_node_id=f"kn-{graph_revision_id}-graph-read-surface",
+        relation_type="supports",
+        directionality="directed",
+        description="Boundary discipline supports graph read surface.",
+        source_signal_ids=["ks-boundary-support"],
+        supporting_fact_ids=["afi-boundary-support"],
+        confidence=0.83,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-20T11:00:00Z",
+        updated_at="2026-04-20T11:00:00Z",
+        payload={"basis_type": "dimension_hit", "basis_key": "boundary_awareness"},
+    )
+    store.insert_graph_nodes([source_node])
+    store.insert_graph_relations([relation])
+    api = WorkspaceAPI(
+        flow=ReviewFlowService.for_testing(),
+        checkpoint_store=store,
+    )
+
+    graph_main_view = api.get_knowledge_graph_main_view(project_id="proj-1", stage_id="stage-1")
+
+    assert graph_main_view.relations == [
+        {
+            "relation_id": relation.knowledge_relation_id,
+            "from_node_id": source_node.knowledge_node_id,
+            "to_node_id": f"kn-{graph_revision_id}-graph-read-surface",
+            "relation_type": "supports",
+            "directionality": "directed",
+            "description": "Boundary discipline supports graph read surface.",
+            "confidence": 0.83,
+        }
+    ]
+    previews_by_node_id = {node.node_id: node.relation_preview for node in graph_main_view.nodes}
+    assert previews_by_node_id[source_node.knowledge_node_id] == [
+        {
+            "relation_id": relation.knowledge_relation_id,
+            "direction": "outgoing",
+            "other_node_id": f"kn-{graph_revision_id}-graph-read-surface",
+            "relation_type": "supports",
+            "description": "Boundary discipline supports graph read surface.",
+        }
+    ]
+    assert previews_by_node_id[f"kn-{graph_revision_id}-graph-read-surface"] == [
+        {
+            "relation_id": relation.knowledge_relation_id,
+            "direction": "incoming",
+            "other_node_id": source_node.knowledge_node_id,
+            "relation_type": "supports",
+            "description": "Boundary discipline supports graph read surface.",
+        }
+    ]
+
+
 def test_workspace_api_returns_graph_revision_view_for_active_revision(tmp_path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()

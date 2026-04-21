@@ -156,7 +156,7 @@ class KnowledgeNodeCardDTO(TransportModel):
     canonical_summary: str
     mastery_status: str
     review_needed: bool
-    relation_preview: list[dict[str, str]] = field(default_factory=list)
+    relation_preview: list[dict[str, object]] = field(default_factory=list)
     evidence_summary: dict[str, object] = field(default_factory=dict)
 
 
@@ -164,7 +164,7 @@ class KnowledgeNodeCardDTO(TransportModel):
 class KnowledgeGraphMainViewDTO(TransportModel):
     selected_cluster: FocusClusterCardDTO | None = None
     nodes: list[KnowledgeNodeCardDTO] = field(default_factory=list)
-    relations: list[dict[str, str]] = field(default_factory=list)
+    relations: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass(slots=True)

@@ -421,6 +421,8 @@ class WorkspaceAPI:
         if not nodes:
             return None
 
+        relations = self._checkpoint_store.list_graph_relations(revision.graph_revision_id)
+        relation_previews_by_node_id = self._graph_main_relation_previews(relations)
         node_cards = [
             KnowledgeNodeCardDTO(
                 node_id=node.knowledge_node_id,
@@ -431,7 +433,7 @@ class WorkspaceAPI:
                 canonical_summary=node.description,
                 mastery_status="unverified",
                 review_needed=node.node_type == "weakness_topic",
-                relation_preview=[],
+                relation_preview=relation_previews_by_node_id.get(node.knowledge_node_id, []),
                 evidence_summary={
                     "topic_key": node.topic_key,
                     "confidence_percent": round(node.confidence * 100),
@@ -444,8 +446,40 @@ class WorkspaceAPI:
         return KnowledgeGraphMainViewDTO(
             selected_cluster=None,
             nodes=node_cards,
-            relations=[],
+            relations=[self._graph_main_relation_item(relation) for relation in relations],
         )
+
+    def _graph_main_relation_item(self, relation) -> dict[str, object]:
+        return {
+            "relation_id": relation.knowledge_relation_id,
+            "from_node_id": relation.from_node_id,
+            "to_node_id": relation.to_node_id,
+            "relation_type": relation.relation_type,
+            "directionality": relation.directionality,
+            "description": relation.description,
+            "confidence": relation.confidence,
+        }
+
+    def _graph_main_relation_previews(self, relations) -> dict[str, list[dict[str, object]]]:
+        previews: dict[str, list[dict[str, object]]] = {}
+        for relation in relations:
+            outgoing = {
+                "relation_id": relation.knowledge_relation_id,
+                "direction": "outgoing",
+                "other_node_id": relation.to_node_id,
+                "relation_type": relation.relation_type,
+                "description": relation.description,
+            }
+            incoming = {
+                "relation_id": relation.knowledge_relation_id,
+                "direction": "incoming",
+                "other_node_id": relation.from_node_id,
+                "relation_type": relation.relation_type,
+                "description": relation.description,
+            }
+            previews.setdefault(relation.from_node_id, []).append(outgoing)
+            previews.setdefault(relation.to_node_id, []).append(incoming)
+        return previews
 
     def get_knowledge_graph_main_view(
         self,

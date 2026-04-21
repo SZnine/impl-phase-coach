@@ -398,6 +398,58 @@ def test_http_api_graph_revision_reads_support_relation_after_submit(tmp_path: P
     }
 
 
+def test_http_api_graph_main_reads_support_relation_after_submit(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "workbench.sqlite3")
+    store.initialize()
+    flow = ReviewFlowService(
+        assessment_client=SupportRelationAssessmentClient(),
+        store=store,
+    )
+    client = TestClient(
+        create_app(
+            api=WorkspaceAPI(
+                flow=flow,
+                checkpoint_store=store,
+            )
+        )
+    )
+    submit_response = client.post(
+        "/api/actions/submit-answer",
+        json={
+            "request_id": "req-graph-main-relation-view",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "question_detail",
+            "actor_id": "local-user",
+            "created_at": "2026-04-21T11:30:00Z",
+            "question_set_id": "set-1",
+            "question_id": "set-1-q-1",
+            "answer_text": "The API boundary exists, but I did not define the request and response contract clearly.",
+            "draft_id": None,
+        },
+    )
+
+    graph_response = client.get(
+        "/api/knowledge/graph-main",
+        params={"project_id": "proj-1", "stage_id": "stage-1"},
+    )
+
+    assert submit_response.status_code == 200
+    assert submit_response.json()["success"] is True
+    assert graph_response.status_code == 200
+    graph_data = graph_response.json()
+    assert graph_data["selected_cluster"] is None
+    assert len(graph_data["relations"]) == 1
+    relation = graph_data["relations"][0]
+    assert relation["relation_type"] == "supports"
+    assert relation["from_node_id"].endswith("-boundary-discipline")
+    assert relation["to_node_id"].endswith("-api-boundary-discipline")
+    assert relation["confidence"] == 0.76
+    previews_by_node_id = {node["node_id"]: node["relation_preview"] for node in graph_data["nodes"]}
+    assert previews_by_node_id[relation["from_node_id"]][0]["direction"] == "outgoing"
+    assert previews_by_node_id[relation["to_node_id"]][0]["direction"] == "incoming"
+
+
 def test_default_http_api_graph_revision_returns_empty_without_active_revision(tmp_path: Path) -> None:
     db_path = tmp_path / "workbench.sqlite3"
     session_path = tmp_path / "workspace-session.json"
