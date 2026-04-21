@@ -55,6 +55,36 @@ impl-phase-coach/
 - 如何拿到 HTML 和 snapshot
 - 如何把复盘结果接回主 skill 流程
 
+### Workbench UI 入口
+
+默认本地演示使用 deterministic/stub agent，适合不联网回归：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-demo.ps1
+```
+
+如需让工作台按钮真实调用本地配置的 Project Agent 和 Evaluator Agent：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-demo.ps1 -LiveAgents -Model gpt-5.4-mini
+```
+
+启动后打开：
+
+```text
+http://127.0.0.1:5173
+```
+
+在 Stage 页面点击 `Generate Project Agent question set`，会通过后端 `/api/actions/generate-question-set` 调用 Project Agent，生成的 checkpoint 会被 Question Set / Question Detail 读面直接读取；随后提交答案会进入 Evaluator Agent、Facts、Graph 链路。
+
+`-LiveAgents` 不会打印 API key。它只会把 backend 进程环境变量指向仓库根目录，默认读取 `.env/api_key.md` 或 `key/api_key.md` 中的 OpenAI-compatible `Base URL` 与 `API Key`。
+
+可分别覆盖模型：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-demo.ps1 -LiveAgents -ProjectModel gpt-5.4-mini -EvaluatorModel gpt-5.4-mini
+```
+
 ## 推荐阅读顺序
 
 1. [SKILL.md](/d:/Desktop/impl-phase-coach/SKILL.md)
