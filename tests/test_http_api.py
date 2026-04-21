@@ -277,9 +277,12 @@ def test_default_http_api_graph_main_reads_submit_side_active_graph_revision(tmp
     assert submit_response.json()["success"] is True
     assert graph_response.status_code == 200
     graph_data = graph_response.json()
-    assert graph_data["selected_cluster"] is None
     assert graph_data["relations"] == []
     assert graph_data["nodes"]
+    assert graph_data["selected_cluster"] is not None
+    assert graph_data["selected_cluster"]["center_node_id"] == graph_data["nodes"][0]["node_id"]
+    assert graph_data["selected_cluster"]["neighbor_node_ids"] == []
+    assert graph_data["selected_cluster"]["focus_reason_codes"] == ["weak_signal_active"]
     assert graph_data["nodes"][0]["node_type"] == "weakness_topic"
     assert graph_data["nodes"][0]["mastery_status"] == "unverified"
     assert graph_data["nodes"][0]["review_needed"] is True
@@ -438,9 +441,15 @@ def test_http_api_graph_main_reads_support_relation_after_submit(tmp_path: Path)
     assert submit_response.json()["success"] is True
     assert graph_response.status_code == 200
     graph_data = graph_response.json()
-    assert graph_data["selected_cluster"] is None
     assert len(graph_data["relations"]) == 1
     relation = graph_data["relations"][0]
+    assert graph_data["selected_cluster"] is not None
+    assert graph_data["selected_cluster"]["center_node_id"] == relation["to_node_id"]
+    assert graph_data["selected_cluster"]["neighbor_node_ids"] == [relation["from_node_id"]]
+    assert graph_data["selected_cluster"]["focus_reason_codes"] == [
+        "weak_signal_active",
+        "relation_connected",
+    ]
     assert relation["relation_type"] == "supports"
     assert relation["from_node_id"].endswith("-boundary-discipline")
     assert relation["to_node_id"].endswith("-api-boundary-discipline")

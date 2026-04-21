@@ -322,7 +322,19 @@ def test_workspace_api_graph_main_view_reads_active_graph_revision_before_profil
 
     graph_main_view = api.get_knowledge_graph_main_view(project_id="proj-1", stage_id="stage-1")
 
-    assert graph_main_view.selected_cluster is None
+    assert graph_main_view.selected_cluster is not None
+    assert graph_main_view.selected_cluster.cluster_id == (
+        "fc-gr-proj-1-stage-stage-1-20260420110000-primary"
+    )
+    assert graph_main_view.selected_cluster.title == "Graph read surface"
+    assert graph_main_view.selected_cluster.center_node_id == (
+        "kn-gr-proj-1-stage-stage-1-20260420110000-graph-read-surface"
+    )
+    assert graph_main_view.selected_cluster.neighbor_node_ids == []
+    assert graph_main_view.selected_cluster.focus_reason_codes == ["weak_signal_active"]
+    assert graph_main_view.selected_cluster.focus_reason_summary == (
+        "Graph read surface is the active weakness topic in this graph revision."
+    )
     assert graph_main_view.relations == []
     assert len(graph_main_view.nodes) == 1
     node = graph_main_view.nodes[0]
@@ -392,6 +404,21 @@ def test_workspace_api_graph_main_view_reads_active_graph_revision_relations(
 
     graph_main_view = api.get_knowledge_graph_main_view(project_id="proj-1", stage_id="stage-1")
 
+    assert graph_main_view.selected_cluster is not None
+    assert graph_main_view.selected_cluster.cluster_id == (
+        "fc-gr-proj-1-stage-stage-1-20260420110000-primary"
+    )
+    assert graph_main_view.selected_cluster.title == "Graph read surface"
+    assert graph_main_view.selected_cluster.center_node_id == f"kn-{graph_revision_id}-graph-read-surface"
+    assert graph_main_view.selected_cluster.neighbor_node_ids == [source_node.knowledge_node_id]
+    assert graph_main_view.selected_cluster.focus_reason_codes == [
+        "weak_signal_active",
+        "relation_connected",
+    ]
+    assert graph_main_view.selected_cluster.focus_reason_summary == (
+        "Graph read surface is the active weakness topic in this graph revision, "
+        "with 1 related graph nodes."
+    )
     assert graph_main_view.relations == [
         {
             "relation_id": relation.knowledge_relation_id,

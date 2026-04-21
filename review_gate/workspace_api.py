@@ -444,7 +444,11 @@ class WorkspaceAPI:
             for node in nodes
         ]
         return KnowledgeGraphMainViewDTO(
-            selected_cluster=None,
+            selected_cluster=self._active_graph_primary_cluster(
+                graph_revision_id=revision.graph_revision_id,
+                nodes=nodes,
+                relations=relations,
+            ),
             nodes=node_cards,
             relations=[self._graph_main_relation_item(relation) for relation in relations],
         )
@@ -480,6 +484,67 @@ class WorkspaceAPI:
             previews.setdefault(relation.from_node_id, []).append(outgoing)
             previews.setdefault(relation.to_node_id, []).append(incoming)
         return previews
+
+    def _active_graph_primary_cluster(self, *, graph_revision_id: str, nodes, relations) -> FocusClusterCardDTO | None:
+        if not nodes:
+            return None
+        center_node = self._active_graph_cluster_center(nodes)
+        neighbor_node_ids = self._active_graph_neighbor_node_ids(center_node.knowledge_node_id, relations)
+        reason_codes = ["weak_signal_active"] if center_node.node_type == "weakness_topic" else ["high_confidence_signal"]
+        if neighbor_node_ids:
+            reason_codes.append("relation_connected")
+        return FocusClusterCardDTO(
+            cluster_id=f"fc-{graph_revision_id}-primary",
+            title=center_node.label,
+            center_node_id=center_node.knowledge_node_id,
+            neighbor_node_ids=neighbor_node_ids,
+            focus_reason_codes=reason_codes,
+            focus_reason_summary=self._active_graph_focus_reason_summary(
+                center_label=center_node.label,
+                is_weakness=center_node.node_type == "weakness_topic",
+                neighbor_count=len(neighbor_node_ids),
+            ),
+        )
+
+    def _active_graph_cluster_center(self, nodes):
+        sorted_nodes = sorted(
+            nodes,
+            key=lambda node: (
+                node.node_type != "weakness_topic",
+                -node.confidence,
+                node.label,
+                node.knowledge_node_id,
+            ),
+        )
+        return sorted_nodes[0]
+
+    def _active_graph_neighbor_node_ids(self, center_node_id: str, relations) -> list[str]:
+        neighbor_ids: list[str] = []
+        for relation in relations:
+            if relation.from_node_id == center_node_id:
+                neighbor_id = relation.to_node_id
+            elif relation.to_node_id == center_node_id:
+                neighbor_id = relation.from_node_id
+            else:
+                continue
+            if neighbor_id not in neighbor_ids:
+                neighbor_ids.append(neighbor_id)
+        return neighbor_ids
+
+    def _active_graph_focus_reason_summary(
+        self,
+        *,
+        center_label: str,
+        is_weakness: bool,
+        neighbor_count: int,
+    ) -> str:
+        if is_weakness:
+            summary = f"{center_label} is the active weakness topic in this graph revision"
+        else:
+            summary = f"{center_label} is the highest-confidence topic in this graph revision"
+        if neighbor_count:
+            return f"{summary}, with {neighbor_count} related graph nodes."
+        return f"{summary}."
 
     def get_knowledge_graph_main_view(
         self,
