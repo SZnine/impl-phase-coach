@@ -32,6 +32,9 @@ class EvaluatorAgentPromptBuilder:
                 "Keep verdict and dimension_scores inside the nested assessment object, not at the top level.",
                 "Use only the canonical dimension keys: correctness, reasoning, decision_awareness, boundary_awareness, stability.",
                 "Core gaps, misconceptions, and evidence should be arrays of strings whenever possible.",
+                "When a core gap can be supported by a foundation, concept, or method, return assessment.support_basis_tags.",
+                "Each support basis tag must connect a source_label to a target_label; target_label must match one item from assessment.core_gaps.",
+                "Use only these support basis keys when applicable: state_modeling, boundary_awareness, decision_awareness.",
                 "Return only structured output that matches the requested output contract.",
             ]
         )
@@ -54,6 +57,9 @@ class EvaluatorAgentPromptBuilder:
                 "- End with an action recommendation.",
                 "- Put verdict inside assessment.verdict.",
                 "- Put dimension scores inside assessment.dimension_scores with the canonical keys only.",
+                "- Put graph-support provenance inside assessment.support_basis_tags when a stable foundation, concept, or method can support a core gap.",
+                "- For each support_basis_tags item include basis_key, source_label, source_node_type, target_label, and target_node_type.",
+                "- Make support_basis_tags.target_label exactly match one string from assessment.core_gaps.",
                 "- Do not invent alternative keys such as current_stage_boundary_alignment or implementation_grounding.",
             ]
         )
@@ -73,6 +79,15 @@ class EvaluatorAgentPromptBuilder:
                 "core_gaps": ["string"],
                 "misconceptions": ["string"],
                 "evidence": ["string"],
+                "support_basis_tags": [
+                    {
+                        "basis_key": "state_modeling|boundary_awareness|decision_awareness",
+                        "source_label": "string",
+                        "source_node_type": "foundation|concept|method",
+                        "target_label": "string matching one core_gaps item",
+                        "target_node_type": "concept|method|decision",
+                    }
+                ],
             },
             "recommended_action": "string",
             "recommended_follow_up_questions": ["string"],

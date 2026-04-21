@@ -74,6 +74,15 @@ def test_evaluator_agent_prompt_builder_exposes_structured_output_contract() -> 
             "core_gaps": ["string"],
             "misconceptions": ["string"],
             "evidence": ["string"],
+            "support_basis_tags": [
+                {
+                    "basis_key": "state_modeling|boundary_awareness|decision_awareness",
+                    "source_label": "string",
+                    "source_node_type": "foundation|concept|method",
+                    "target_label": "string matching one core_gaps item",
+                    "target_node_type": "concept|method|decision",
+                }
+            ],
         },
         "recommended_action": "string",
         "recommended_follow_up_questions": ["string"],
@@ -99,3 +108,23 @@ def test_evaluator_agent_prompt_builder_explicitly_forbids_flat_or_alternative_d
     assert "Keep verdict and dimension_scores inside the nested assessment object" in prompt.system_prompt
     assert "Use only the canonical dimension keys" in prompt.system_prompt
     assert "Do not invent alternative keys such as current_stage_boundary_alignment" in prompt.user_prompt
+
+
+def test_evaluator_agent_prompt_builder_requests_support_basis_tags_for_graph_relations() -> None:
+    builder = EvaluatorAgentPromptBuilder()
+
+    prompt = builder.build(
+        {
+            "request_id": "req-21",
+            "project_context": "review_gate graph smoke",
+            "stage_context": "live evaluator should produce graph-support provenance",
+            "question_context": "What structured fields should support graph relations?",
+            "answer_text": "The API boundary is weak but boundary discipline can support it.",
+        }
+    )
+
+    assert "assessment.support_basis_tags" in prompt.system_prompt
+    assert "target_label must match one item from assessment.core_gaps" in prompt.system_prompt
+    assert "support_basis_tags" in prompt.user_prompt
+    assert "source_label" in prompt.user_prompt
+    assert "target_node_type" in prompt.user_prompt
