@@ -166,12 +166,12 @@ upsert_active_graph_revision_pointer
 
 ## 7. relation 语义 v1
 
-本阶段只做 deterministic relation v1，不追求语义完备。
+本阶段只做 deterministic relation v1，不追求语义完备，也不凭 node 类型做宽泛启发式连边。
 
-推荐第一版只生成 `supports`：
+推荐第一版只生成 provenance-backed `supports`：
 
 ```text
-strength_topic/evidence_topic -> weakness_topic
+support_source_topic -> support_target_topic
 relation_type = supports
 directionality = directed
 ```
@@ -179,13 +179,40 @@ directionality = directed
 生成条件：
 
 1. 同一 `GraphRevision` 内至少有 2 个 node。
-2. 存在 `weakness_topic` node。
-3. 存在 `strength_topic` 或 `evidence_topic` node。
-4. 两端 node 至少共享一个 `supporting_fact_id` 或共享一个 `source_signal_id` 所属的 `assessment_fact_batch_id`。
+2. 两端 node 都来自同一 `AssessmentFactBatch`。
+3. 上游 assessment 中存在明确 `support_signals`。
+4. `AssessmentSynthesizer` 已经把该 `support_signal` 物化成 `support_relation` fact。
+5. `AssessmentFactSignalProjector` 已经把该 fact 物化成 `support_relation` signal。
+6. `KnowledgeSignalGraphProjector` 只根据 `support_relation` signal 的 payload 生成 relation。
 
-如果无法证明共享来源，不生成 relation。
+如果没有明确 `support_relation` signal，不生成 relation。
 
-这条规则的目标不是证明“语义上一定支持”，而是先建立一条保守、可解释、可回溯的连边机制。后续 Maintenance Agent 可以基于 facts + graph 重新压缩和改写 relation。
+这条规则的目标不是证明“语义上一定支持”，而是先建立一条保守、可解释、可回溯的连边机制。relation 的存在必须能追溯到上游 assessment 的结构化支持信号，而不是 projector 根据 topic 类型自行猜测。后续 Maintenance Agent 可以基于 facts + graph 重新压缩和改写 relation。
+
+### 7.1 支持信号物化边界
+
+当前 `ReviewFlowService` 已经会从 `support_basis_tags` 和低分维度命中中派生 `support_signals`。本阶段不重新设计这个逻辑，只把它纳入 checkpoint 主链：
+
+```text
+assessment.support_signals
+  -> AssessmentFactItem(fact_type="support_relation")
+  -> KnowledgeSignal(signal_type="support_relation")
+  -> KnowledgeRelationRecord(relation_type="supports")
+```
+
+`support_relation` fact 的 payload 至少包含：
+
+```text
+source_label
+source_node_type
+target_label
+target_node_type
+basis_type
+basis_key
+relation_type = supports
+```
+
+source/target node 的 topic key 使用同一套稳定 slug 规则生成，确保 support relation 可以指向同 revision 内的具体 nodes。
 
 暂不生成：
 
@@ -302,10 +329,13 @@ active pointer
 2. SQLite 能写入和读取 `graph_knowledge_relations`。
 3. `KnowledgeSignalGraphProjector` 能在有弱点和支撑节点时生成 `supports` relation。
 4. `GraphRevisionRecord.relation_count` 等于生成 relation 数量。
-5. submit-side orchestration 会把 relation 写入 checkpoint store。
-6. `WorkspaceAPI.get_graph_revision_view` 返回 relation DTO。
-7. HTTP `/api/knowledge/graph-revision` 在 submit 后能读到 relation。
-8. 现有 `/api/knowledge/graph-main` 兼容测试继续通过。
+5. `AssessmentSynthesizer` 会把 `support_signals` 物化成 `support_relation` facts。
+6. `AssessmentFactSignalProjector` 会把 `support_relation` facts 物化成 `support_relation` signals。
+7. submit-side orchestration 会把 relation 写入 checkpoint store。
+8. `WorkspaceAPI.get_graph_revision_view` 返回 relation DTO。
+9. HTTP `/api/knowledge/graph-revision` 在 submit 后能读到 relation。
+10. 最小真实闭环测试使用 HTTP submit + SQLite store + graph-revision read，不只测单个 projector 函数。
+11. 现有 `/api/knowledge/graph-main` 兼容测试继续通过。
 
 不测试：
 
