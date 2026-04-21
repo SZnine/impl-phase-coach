@@ -539,6 +539,70 @@ def test_generate_question_set_persists_first_checkpoint_question_chain(tmp_path
     ]
 
 
+def test_get_question_set_view_reads_latest_generated_checkpoint_questions(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    store.upsert_question_set(_semantic_question_set())
+    service = ReviewFlowService.with_store(store)
+    service.generate_question_set(
+        {
+            "request_id": "req-qgen-read-1",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "module-interface-boundary",
+            "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+            "stage_summary": "Generated read surface regression",
+            "current_decisions": ["Question generation action"],
+            "key_logic_points": ["HTTP route delegates to service"],
+            "known_weak_points": [],
+            "boundary_focus": ["generated question read surface"],
+            "question_strategy": "core_and_why",
+            "max_questions": 2,
+            "source_refs": ["tests/test_review_flow_service.py"],
+        }
+    )
+
+    view = service.get_question_set_view("proj-1", "stage-1", "set-1")
+
+    assert view.question_set_id == "set-1"
+    assert view.question_count == 2
+    assert view.current_question_id == "set-1-q-1"
+    assert [item.question_id for item in view.questions] == ["set-1-q-1", "set-1-q-2"]
+    assert view.questions[0].prompt == "Explain the current-stage boundary."
+    assert view.questions[1].prompt == "Why did we choose this boundary?"
+
+
+def test_get_question_view_reads_latest_generated_checkpoint_question_detail(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    store.upsert_question_set(_semantic_question_set())
+    service = ReviewFlowService.with_store(store)
+    service.generate_question_set(
+        {
+            "request_id": "req-qgen-detail-1",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "module-interface-boundary",
+            "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+            "stage_summary": "Generated detail regression",
+            "current_decisions": ["Question generation action"],
+            "key_logic_points": ["HTTP route delegates to service"],
+            "known_weak_points": [],
+            "boundary_focus": ["generated question detail"],
+            "question_strategy": "core_and_why",
+            "max_questions": 2,
+            "source_refs": ["tests/test_review_flow_service.py"],
+        }
+    )
+
+    view = service.get_question_view("proj-1", "stage-1", "set-1", "set-1-q-2")
+
+    assert view.question_id == "set-1-q-2"
+    assert view.question_level == "why"
+    assert view.prompt == "Why did we choose this boundary?"
+    assert view.intent == "Check reasoning about trade-offs."
+
+
 def test_generate_question_set_skips_event_without_active_question_set(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()

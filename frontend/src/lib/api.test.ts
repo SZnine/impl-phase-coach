@@ -191,6 +191,46 @@ describe("createApiClient", () => {
       }),
     );
   });
+
+  test("generates question sets through the backend action path", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ request_id: "req-qgen-1", questions: [] }),
+    });
+    const client = createApiClient("/api", fetchImpl as typeof fetch);
+
+    await client.generateQuestionSet({
+      request_id: "req-qgen-1",
+      project_id: "proj-1",
+      stage_id: "stage-1",
+      source_page: "stage_detail",
+      actor_id: "local-user",
+      created_at: "2026-04-21T00:00:00.000Z",
+      stage_label: "module-interface-boundary",
+      stage_goal: "freeze boundaries",
+      stage_summary: "generate from stage page",
+      stage_artifacts: [],
+      stage_exit_criteria: [],
+      current_decisions: ["Question generation action"],
+      key_logic_points: ["HTTP action"],
+      known_weak_points: [],
+      boundary_focus: ["generated question read surface"],
+      question_strategy: "full_depth",
+      max_questions: 4,
+      source_refs: ["stage:stage-1"],
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/actions/generate-question-set",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+      }),
+    );
+  });
 });
 test("reads workspace session from the backend HTTP path", async () => {
   const fetchImpl = vi.fn().mockResolvedValue({

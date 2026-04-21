@@ -229,6 +229,45 @@ export type QuestionViewDTO = {
   status: string;
 };
 
+export type GenerateQuestionDTO = {
+  question_id: string;
+  question_level: string;
+  prompt: string;
+  intent: string;
+  expected_signals: string[];
+  source_context: string[];
+};
+
+export type GenerateQuestionSetRequestDTO = {
+  request_id: string;
+  project_id: string;
+  stage_id: string;
+  source_page: string;
+  actor_id: string;
+  created_at: string;
+  stage_label: string;
+  stage_goal: string;
+  stage_summary: string;
+  stage_artifacts: string[];
+  stage_exit_criteria: string[];
+  current_decisions: string[];
+  key_logic_points: string[];
+  known_weak_points: string[];
+  boundary_focus: string[];
+  question_strategy: string;
+  max_questions: number;
+  source_refs: string[];
+};
+
+export type GenerateQuestionSetResponseDTO = {
+  request_id: string;
+  questions: GenerateQuestionDTO[];
+  generation_summary: string;
+  coverage_notes: string[];
+  warnings: string[];
+  confidence: number;
+};
+
 export type SubmitAnswerRequestDTO = {
   request_id: string;
   project_id: string;
@@ -292,6 +331,7 @@ export type ApiClient = {
     questionSetId: string,
     questionId: string,
   ): Promise<QuestionViewDTO>;
+  generateQuestionSet(request: GenerateQuestionSetRequestDTO): Promise<GenerateQuestionSetResponseDTO>;
   submitAnswer(request: SubmitAnswerRequestDTO): Promise<SubmitAnswerResponseDTO>;
 };
 
@@ -484,6 +524,14 @@ export function createApiClient(baseUrl = "/api", fetchImpl: FetchLike = fetch):
         fetchImpl,
         `${normalizedBaseUrl}/projects/${projectId}/stages/${stageId}/questions/${questionSetId}/${questionId}`,
         "question view",
+      );
+    },
+    generateQuestionSet(request) {
+      return sendJson<GenerateQuestionSetResponseDTO>(
+        fetchImpl,
+        `${normalizedBaseUrl}/actions/generate-question-set`,
+        request,
+        "question generation",
       );
     },
     submitAnswer(request) {

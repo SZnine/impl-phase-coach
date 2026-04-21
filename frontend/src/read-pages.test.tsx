@@ -385,6 +385,23 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
     } satisfies ProposalActionResponseDTO),
     getQuestionSetView: vi.fn().mockResolvedValue(questionSetView),
     getQuestionView: vi.fn().mockResolvedValue(questionView),
+    generateQuestionSet: vi.fn().mockResolvedValue({
+      request_id: "req-qgen-ui",
+      questions: [
+        {
+          question_id: "q-1",
+          question_level: "why",
+          prompt: "Why expose question generation to the workbench?",
+          intent: "Check generated workflow entry.",
+          expected_signals: ["HTTP action"],
+          source_context: ["stage page"],
+        },
+      ],
+      generation_summary: "Generated 1 question.",
+      coverage_notes: [],
+      warnings: [],
+      confidence: 0.8,
+    }),
     submitAnswer: vi.fn().mockResolvedValue({
       request_id: "req-1",
       success: true,
@@ -446,7 +463,32 @@ test("StagePage renders loaded stage data and not the static placeholder", async
     "href",
     "/projects/proj-1/stages/stage-1/questions/set-1",
   );
+  expect(screen.getByRole("button", { name: "Generate Project Agent question set" })).toBeInTheDocument();
   expect(screen.queryByText(/Nested under project/)).not.toBeInTheDocument();
+});
+
+test("StagePage triggers Project Agent question generation from the workbench", async () => {
+  const client = createClient();
+
+  renderWithClient(<StagePage />, client, "/projects/proj-1/stages/stage-1");
+
+  await screen.findByRole("heading", { name: "Stage: Validation stage" });
+  fireEvent.click(screen.getByRole("button", { name: "Generate Project Agent question set" }));
+
+  await waitFor(() =>
+    expect(client.generateQuestionSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: "proj-1",
+        stage_id: "stage-1",
+        source_page: "stage_detail",
+        actor_id: "local-user",
+        stage_label: "Validation stage",
+        stage_goal: "Confirm boundary handling",
+        question_strategy: "full_depth",
+        max_questions: 4,
+      }),
+    ),
+  );
 });
 
 test("MistakesPage renders loaded mistake entries and not the shell placeholder", async () => {

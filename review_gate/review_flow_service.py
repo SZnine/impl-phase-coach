@@ -203,6 +203,32 @@ class ReviewFlowService:
         )
 
     def get_question_set_view(self, project_id: str, stage_id: str, question_set_id: str) -> QuestionSetViewDTO:
+        generated_items = self._get_latest_generated_question_items(
+            project_id=project_id,
+            stage_id=stage_id,
+            question_set_id=question_set_id,
+        )
+        if generated_items:
+            questions = [
+                QuestionSummaryDTO(
+                    question_id=self._transport_question_id(item),
+                    question_level=item.difficulty_level or item.question_type,
+                    prompt=item.prompt,
+                    status=item.status,
+                )
+                for item in generated_items
+            ]
+            return QuestionSetViewDTO(
+                project_id=project_id,
+                stage_id=stage_id,
+                question_set_id=question_set_id,
+                question_set_title=f"Generated question set {question_set_id}",
+                status="active",
+                question_count=len(questions),
+                current_question_id=questions[0].question_id,
+                questions=questions,
+            )
+
         questions = [
             QuestionSummaryDTO(
                 question_id=f"{question_set_id}-q-1",
@@ -253,6 +279,19 @@ class ReviewFlowService:
     ) -> bool:
         if not self.question_set_exists(project_id, stage_id, question_set_id) or question_id is None:
             return False
+        if (
+            project_id is not None
+            and stage_id is not None
+            and question_set_id is not None
+            and self._get_generated_question_item(
+                project_id=project_id,
+                stage_id=stage_id,
+                question_set_id=question_set_id,
+                transport_question_id=question_id,
+            )
+            is not None
+        ):
+            return True
         expected_ids = {
             f"{question_set_id}-q-1",
             f"{question_set_id}-q-2",
@@ -267,6 +306,26 @@ class ReviewFlowService:
         question_set_id: str,
         question_id: str,
     ) -> QuestionViewDTO:
+        generated_item = self._get_generated_question_item(
+            project_id=project_id,
+            stage_id=stage_id,
+            question_set_id=question_set_id,
+            transport_question_id=question_id,
+        )
+        if generated_item is not None:
+            return QuestionViewDTO(
+                project_id=project_id,
+                stage_id=stage_id,
+                question_set_id=question_set_id,
+                question_id=question_id,
+                question_level=generated_item.difficulty_level or generated_item.question_type,
+                prompt=generated_item.prompt,
+                intent=generated_item.intent,
+                answer_placeholder="Answer the generated question for the current stage.",
+                allowed_actions=["submit_answer", "continue_answering", "deepen", "pause_review", "skip_and_continue_project"],
+                status=generated_item.status,
+            )
+
         question_level = self._resolve_question_level(question_id)
         prompt_map = {
             "core": f"Explain the boundary for question {question_id}.",
@@ -289,6 +348,52 @@ class ReviewFlowService:
             answer_placeholder="Write the answer for the current stage question.",
             allowed_actions=["submit_answer", "continue_answering", "deepen", "pause_review", "skip_and_continue_project"],
         )
+
+    def _get_latest_generated_question_items(
+        self,
+        *,
+        project_id: str,
+        stage_id: str,
+        question_set_id: str,
+    ) -> list[QuestionItemRecord]:
+        if self._store is None:
+            return []
+        for event in reversed(self._store.list_events(project_id=project_id)):
+            if event.event_type != "question_set_generated":
+                continue
+            if str(event.payload.get("stage_id", "")).strip() != stage_id:
+                continue
+            if str(event.payload.get("question_set_id", "")).strip() != question_set_id:
+                continue
+            question_batch_id = str(event.payload.get("question_batch_id", "")).strip()
+            if not question_batch_id:
+                continue
+            question_batch = self._store.get_question_batch(question_batch_id)
+            if question_batch is None:
+                continue
+            return self._store.list_question_items(question_batch.question_batch_id)
+        return []
+
+    def _get_generated_question_item(
+        self,
+        *,
+        project_id: str,
+        stage_id: str,
+        question_set_id: str,
+        transport_question_id: str,
+    ) -> QuestionItemRecord | None:
+        for item in self._get_latest_generated_question_items(
+            project_id=project_id,
+            stage_id=stage_id,
+            question_set_id=question_set_id,
+        ):
+            if self._transport_question_id(item) == transport_question_id:
+                return item
+        return None
+
+    @staticmethod
+    def _transport_question_id(item: QuestionItemRecord) -> str:
+        return str(item.payload.get("transport_question_id", item.question_id))
 
     def generate_question_set(self, request: dict) -> dict:
         response = self._question_generation_client.generate(request)
