@@ -18,6 +18,27 @@ def create_client() -> TestClient:
     return TestClient(create_app(api=WorkspaceAPI(flow=ReviewFlowService.for_testing())))
 
 
+class StaticQuestionGenerationClient:
+    def generate(self, request: dict) -> dict:
+        return {
+            "request_id": request["request_id"],
+            "questions": [
+                {
+                    "question_id": "q-1",
+                    "question_level": "why",
+                    "prompt": "Why should generated questions cross the HTTP action boundary?",
+                    "intent": "Check generated workflow wiring.",
+                    "expected_signals": ["http generation action"],
+                    "source_context": ["test_http_api"],
+                }
+            ],
+            "generation_summary": "Generated a route-backed question.",
+            "coverage_notes": [],
+            "warnings": [],
+            "confidence": 0.81,
+        }
+
+
 class SupportRelationAssessmentClient:
     def assess(self, request: dict) -> dict:
         return {
@@ -550,6 +571,46 @@ def test_http_api_returns_question_view() -> None:
     assert data["question_id"] == "set-1-q-2"
     assert data["question_level"] == "why"
     assert data["allowed_actions"]
+
+
+def test_http_api_generate_question_set_action_returns_generated_questions_and_persists_chain(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "workbench.sqlite3")
+    store.initialize()
+    flow = ReviewFlowService(
+        question_generation_client=StaticQuestionGenerationClient(),
+        store=store,
+    )
+    client = TestClient(create_app(api=WorkspaceAPI(flow=flow, checkpoint_store=store)))
+
+    response = client.post(
+        "/api/actions/generate-question-set",
+        json={
+            "request_id": "req-http-generate-action",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "full_live_workflow_smoke",
+            "actor_id": "local-user",
+            "created_at": "2026-04-21T14:00:00Z",
+            "stage_label": "module-interface-boundary",
+            "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+            "stage_summary": "HTTP action smoke",
+            "current_decisions": ["Question generation action"],
+            "key_logic_points": ["HTTP route delegates to service"],
+            "known_weak_points": ["generated question context"],
+            "boundary_focus": ["action boundary"],
+            "question_strategy": "full_depth",
+            "max_questions": 1,
+            "source_refs": ["tests/test_http_api.py"],
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["request_id"] == "req-http-generate-action"
+    assert data["questions"][0]["question_id"] == "q-1"
+    assert data["questions"][0]["prompt"] == "Why should generated questions cross the HTTP action boundary?"
+    assert store.get_workflow_request("req-http-generate-action") is not None
+    assert store.get_question_batch("qb-req-http-generate-action") is not None
 
 
 def test_http_api_submit_answer_returns_assessment_and_refreshes_stage_mastery() -> None:

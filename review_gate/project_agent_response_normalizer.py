@@ -111,7 +111,7 @@ class ProjectAgentResponseNormalizer:
         if not isinstance(item, Mapping):
             raise ValueError("Project Agent question item must be an object")
 
-        prompt = str(item.get("prompt", "")).strip()
+        prompt = self._resolve_prompt(item)
         if not prompt:
             raise ValueError("Project Agent question item missing prompt")
 
@@ -182,6 +182,14 @@ class ProjectAgentResponseNormalizer:
         if self._CANONICAL_QUESTION_ID_PATTERN.fullmatch(raw_question_id):
             return raw_question_id
         return f"q-{index}"
+
+    @staticmethod
+    def _resolve_prompt(item: Mapping[str, Any]) -> str:
+        for key in ("prompt", "question", "question_text", "title", "text", "content"):
+            value = str(item.get(key, "")).strip()
+            if value:
+                return value
+        return ""
 
     @staticmethod
     def _matches_any_pattern(text: str, patterns: tuple[str, ...]) -> bool:

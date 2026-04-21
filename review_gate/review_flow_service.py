@@ -17,7 +17,7 @@ from review_gate.checkpoint_models import (
 from review_gate.domain import AnswerFact, AssessmentFact, DecisionFact, ProjectReview, StageReview, WorkspaceEvent
 from review_gate.evaluator_agent_prompt_builder import EvaluatorAgentPromptBuilder
 from review_gate.evaluator_agent_response_normalizer import EvaluatorAgentResponseNormalizer
-from review_gate.generated_chain_resolver import GeneratedChainResolver
+from review_gate.generated_chain_resolver import GeneratedChainResolver, ResolvedQuestionChain
 from review_gate.project_agent_question_generation_client import ProjectAgentQuestionGenerationClient
 from review_gate.project_agent_response_normalizer import ProjectAgentResponseNormalizer
 from review_gate.question_checkpoint_writer import QuestionCheckpointWriter
@@ -377,7 +377,16 @@ class ReviewFlowService:
                 return dict(stage)
         return dict(project["stages"][0])
 
-    def _build_current_question_context(self, request: SubmitAnswerRequest) -> CurrentQuestionContext:
+    def _build_current_question_context(
+        self,
+        request: SubmitAnswerRequest,
+        *,
+        resolved_chain: ResolvedQuestionChain | None = None,
+    ) -> CurrentQuestionContext:
+        generated_context = self._build_generated_question_context(request, resolved_chain=resolved_chain)
+        if generated_context is not None:
+            return generated_context
+
         question_view = self.get_question_view(
             request.project_id,
             request.stage_id,
@@ -397,6 +406,31 @@ class ReviewFlowService:
             source_context=[question_ref],
         )
 
+    def _build_generated_question_context(
+        self,
+        request: SubmitAnswerRequest,
+        *,
+        resolved_chain: ResolvedQuestionChain | None,
+    ) -> CurrentQuestionContext | None:
+        if resolved_chain is None:
+            return None
+
+        generated_item = resolved_chain.generated_item
+        if generated_item is None:
+            return None
+
+        return CurrentQuestionContext(
+            project_id=request.project_id,
+            stage_id=request.stage_id,
+            question_set_id=request.question_set_id,
+            question_id=request.question_id,
+            question_level=generated_item.difficulty_level or generated_item.question_type,
+            question_prompt=generated_item.prompt,
+            question_intent=generated_item.intent,
+            expected_signals=self._coerce_str_list(generated_item.payload.get("expected_signals")),
+            source_context=self._coerce_str_list(generated_item.payload.get("source_context")),
+        )
+
     def _resolve_question_level(self, question_id: str) -> str:
         lowered = question_id.lower()
         if "abstract" in lowered or lowered.endswith("-3"):
@@ -404,6 +438,32 @@ class ReviewFlowService:
         if "why" in lowered or lowered.endswith("-2"):
             return "why"
         return "core"
+
+    @staticmethod
+    def _coerce_str_list(value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            items = value
+        elif isinstance(value, tuple):
+            items = list(value)
+        elif isinstance(value, dict):
+            items = list(value.keys())
+        else:
+            items = [value]
+        return [str(item) for item in items if str(item).strip()]
+
+    def _resolve_question_chain_for_submit(self, request: SubmitAnswerRequest) -> ResolvedQuestionChain | None:
+        if self._generated_chain_resolver is None:
+            return None
+        return self._generated_chain_resolver.resolve(
+            project_id=request.project_id,
+            stage_id=request.stage_id,
+            question_set_id=request.question_set_id,
+            transport_question_id=request.question_id,
+            request_id=request.request_id,
+            created_at=request.created_at,
+        )
 
     def _build_project_review(self, project_id: str) -> ProjectReview:
         project = self._get_project_definition(project_id)
@@ -514,7 +574,8 @@ class ReviewFlowService:
                 assessment_summary=None,
             )
 
-        current_question = self._build_current_question_context(request)
+        resolved_chain = self._resolve_question_chain_for_submit(request)
+        current_question = self._build_current_question_context(request, resolved_chain=resolved_chain)
         answer_id = f"answer-{request.request_id}"
         assessment_response = self._assessment_client.assess(
             self._build_assessment_request_payload(request=request, current_question=current_question)
@@ -555,14 +616,10 @@ class ReviewFlowService:
             ]
             if writer_support_signals:
                 writer_assessment["support_signals"] = writer_support_signals
-            resolved_chain = self._generated_chain_resolver.resolve(
-                project_id=request.project_id,
-                stage_id=request.stage_id,
-                question_set_id=request.question_set_id,
-                transport_question_id=request.question_id,
-                request_id=request.request_id,
-                created_at=request.created_at,
-            )
+            if resolved_chain is None:
+                resolved_chain = self._resolve_question_chain_for_submit(request)
+            if resolved_chain is None:
+                raise RuntimeError("Generated chain resolver is required when checkpoint store is enabled")
             self._answer_checkpoint_writer.write(
                 request=request,
                 resolved_chain=resolved_chain,

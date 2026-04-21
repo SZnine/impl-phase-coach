@@ -723,7 +723,8 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
     store.initialize()
     question_set = _semantic_question_set()
     store.upsert_question_set(question_set)
-    service = ReviewFlowService(assessment_client=CapturingAssessmentClient.for_testing(), store=store)
+    assessment_client = CapturingAssessmentClient.for_testing()
+    service = ReviewFlowService(assessment_client=assessment_client, store=store)
 
     service.generate_question_set(
         {
@@ -761,6 +762,10 @@ def test_submit_answer_reuses_existing_generated_question_batch(tmp_path: Path) 
     )
 
     assert response.success is True
+    assert assessment_client.requests[0]["question_prompt"] == "Explain the current-stage boundary."
+    assert assessment_client.requests[0]["question_intent"] == "Check current-stage understanding."
+    assert assessment_client.requests[0]["expected_signals"] == ["Question, Assessment, Decision split"]
+    assert assessment_client.requests[0]["source_context"] == []
     assert store.get_question_set("set-1") == question_set
     assert store.get_question_batch("qb-req-qgen-1") == QuestionBatchRecord(
         question_batch_id="qb-req-qgen-1",

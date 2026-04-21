@@ -1,4 +1,4 @@
-from review_gate.action_dtos import ProposalActionRequest, SubmitAnswerRequest
+from review_gate.action_dtos import GenerateQuestionSetRequest, ProposalActionRequest, SubmitAnswerRequest
 from review_gate.domain import WorkspaceSession
 from review_gate.profile_space_service import ProfileSpaceService
 from review_gate.proposal_center_service import ProposalCenterService
@@ -670,6 +670,9 @@ class WorkspaceAPI:
             execution_status=execution["status"],
             execution_summary=execution["summary"],
         )
+
+    def generate_question_set_action(self, request: GenerateQuestionSetRequest) -> dict:
+        return self._flow.generate_question_set(request.model_dump())
 
     def submit_answer_action(self, request: SubmitAnswerRequest) -> SubmitAnswerResponseDTO:
         response = self._flow.submit_answer(request)

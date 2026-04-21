@@ -88,6 +88,22 @@ class SubmitAnswerRequest(ActionRequestBase):
 
 
 @dataclass(slots=True)
+class GenerateQuestionSetRequest(ActionRequestBase):
+    stage_label: str = ""
+    stage_goal: str = ""
+    stage_summary: str = ""
+    stage_artifacts: list[str] = field(default_factory=list)
+    stage_exit_criteria: list[str] = field(default_factory=list)
+    current_decisions: list[str] = field(default_factory=list)
+    key_logic_points: list[str] = field(default_factory=list)
+    known_weak_points: list[str] = field(default_factory=list)
+    boundary_focus: list[str] = field(default_factory=list)
+    question_strategy: str = "full_depth"
+    max_questions: int = 3
+    source_refs: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class ProposalActionRequest(TransportModel):
     request_id: str
     source_page: str

@@ -81,6 +81,35 @@ def test_response_normalizer_prefers_explicit_question_level_and_source_fields()
     assert response["questions"][0]["source_context"] == ["review_flow_service.py"]
 
 
+def test_response_normalizer_accepts_common_prompt_aliases_from_live_provider() -> None:
+    normalizer = ProjectAgentResponseNormalizer()
+
+    response = normalizer.normalize(
+        request={
+            "request_id": "req-alias",
+            "current_decisions": ["HTTP action boundary"],
+            "source_refs": ["docs/spec.md"],
+        },
+        raw_result={
+            "raw_content": """
+            {
+              "questions": [
+                {
+                  "id": "q-1",
+                  "question": "Why should generated questions cross an HTTP action before submit?",
+                  "intent": "Check action-boundary reasoning.",
+                  "difficulty": "intermediate"
+                }
+              ]
+            }
+            """,
+        },
+    )
+
+    assert response["questions"][0]["prompt"] == "Why should generated questions cross an HTTP action before submit?"
+    assert response["questions"][0]["question_level"] == "why"
+
+
 def test_response_normalizer_rejects_invalid_json() -> None:
     normalizer = ProjectAgentResponseNormalizer()
 

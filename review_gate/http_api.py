@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from review_gate.action_dtos import ProposalActionRequest, SubmitAnswerRequest
+from review_gate.action_dtos import GenerateQuestionSetRequest, ProposalActionRequest, SubmitAnswerRequest
 from review_gate.evaluator_agent_assessment_client import EvaluatorAgentAssessmentClient
 from review_gate.evaluator_agent_prompt_builder import EvaluatorAgentPromptBuilder
 from review_gate.evaluator_agent_response_normalizer import EvaluatorAgentResponseNormalizer
@@ -190,6 +190,11 @@ def create_app(
     def proposal_action(payload: dict) -> dict:
         request = ProposalActionRequest.model_validate(payload)
         return workspace_api.proposal_action(request).model_dump()
+
+    @app.post("/api/actions/generate-question-set")
+    def generate_question_set(payload: dict) -> dict:
+        request = GenerateQuestionSetRequest.model_validate(payload)
+        return workspace_api.generate_question_set_action(request)
 
     @app.post("/api/actions/submit-answer")
     def submit_answer(payload: dict) -> dict:
