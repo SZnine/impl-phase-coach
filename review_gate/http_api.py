@@ -178,6 +178,10 @@ def create_app(
     ) -> dict:
         return workspace_api.get_knowledge_graph_main_view(project_id, stage_id, cluster_id, node_id).model_dump()
 
+    @app.get("/api/knowledge/graph-revision")
+    def get_graph_revision_view(project_id: str, stage_id: str) -> dict:
+        return workspace_api.get_graph_revision_view(project_id, stage_id).model_dump()
+
     @app.get("/api/proposals")
     def get_proposals_view() -> dict:
         return workspace_api.get_proposals_view().model_dump()

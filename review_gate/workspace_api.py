@@ -5,6 +5,9 @@ from review_gate.proposal_center_service import ProposalCenterService
 from review_gate.review_flow_service import ReviewFlowService
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
+    GraphRevisionNodeDTO,
+    GraphRevisionSummaryDTO,
+    GraphRevisionViewDTO,
     HomeProjectItemDTO,
     HomeViewDTO,
     FocusClusterCardDTO,
@@ -307,6 +310,74 @@ class WorkspaceAPI:
             focus_clusters=focus_clusters,
             current_weak_spots=current_weak_spots,
             foundation_hotspots=foundation_hotspots,
+        )
+
+    def _empty_graph_revision_view(self, project_id: str, stage_id: str) -> GraphRevisionViewDTO:
+        return GraphRevisionViewDTO(
+            project_id=project_id,
+            stage_id=stage_id,
+            has_active_revision=False,
+            revision=None,
+            nodes=[],
+            relations=[],
+        )
+
+    def _graph_revision_summary_to_dto(self, revision) -> GraphRevisionSummaryDTO:
+        return GraphRevisionSummaryDTO(
+            graph_revision_id=revision.graph_revision_id,
+            project_id=revision.project_id,
+            scope_type=revision.scope_type,
+            scope_ref=revision.scope_ref,
+            revision_type=revision.revision_type,
+            status=revision.status,
+            node_count=revision.node_count,
+            relation_count=revision.relation_count,
+            source_fact_batch_ids=list(revision.source_fact_batch_ids),
+            source_signal_ids=list(revision.source_signal_ids),
+            created_by=revision.created_by,
+            created_at=revision.created_at,
+            activated_at=revision.activated_at,
+            revision_summary=revision.revision_summary,
+        )
+
+    def _graph_revision_node_to_dto(self, node) -> GraphRevisionNodeDTO:
+        return GraphRevisionNodeDTO(
+            knowledge_node_id=node.knowledge_node_id,
+            graph_revision_id=node.graph_revision_id,
+            topic_key=node.topic_key,
+            label=node.label,
+            node_type=node.node_type,
+            description=node.description,
+            source_signal_ids=list(node.source_signal_ids),
+            supporting_fact_ids=list(node.supporting_fact_ids),
+            confidence=node.confidence,
+            status=node.status,
+            created_by=node.created_by,
+            created_at=node.created_at,
+            updated_at=node.updated_at,
+            payload=dict(node.payload),
+        )
+
+    def get_graph_revision_view(self, project_id: str, stage_id: str) -> GraphRevisionViewDTO:
+        if self._checkpoint_store is None:
+            return self._empty_graph_revision_view(project_id, stage_id)
+
+        pointer = self._checkpoint_store.get_active_graph_revision_pointer(project_id, "stage", stage_id)
+        if pointer is None:
+            return self._empty_graph_revision_view(project_id, stage_id)
+
+        revision = self._checkpoint_store.get_graph_revision(pointer.active_graph_revision_id)
+        if revision is None:
+            return self._empty_graph_revision_view(project_id, stage_id)
+
+        nodes = self._checkpoint_store.list_graph_nodes(revision.graph_revision_id)
+        return GraphRevisionViewDTO(
+            project_id=project_id,
+            stage_id=stage_id,
+            has_active_revision=True,
+            revision=self._graph_revision_summary_to_dto(revision),
+            nodes=[self._graph_revision_node_to_dto(node) for node in nodes],
+            relations=[],
         )
 
     def _get_active_graph_main_view(

@@ -252,6 +252,74 @@ def test_default_http_api_graph_main_reads_submit_side_active_graph_revision(tmp
     assert graph_data["nodes"][0]["evidence_summary"]["fact_count"] == 1
 
 
+def test_default_http_api_graph_revision_reads_submit_side_active_revision(tmp_path: Path) -> None:
+    db_path = tmp_path / "workbench.sqlite3"
+    session_path = tmp_path / "workspace-session.json"
+    client = TestClient(create_app(db_path=db_path, session_path=session_path))
+    submit_response = client.post(
+        "/api/actions/submit-answer",
+        json={
+            "request_id": "req-graph-revision-view",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "question_detail",
+            "actor_id": "local-user",
+            "created_at": "2026-04-20T13:00:00Z",
+            "question_set_id": "set-1",
+            "question_id": "set-1-q-1",
+            "answer_text": "This answer is long enough to avoid the weak fallback verdict.",
+            "draft_id": None,
+        },
+    )
+
+    graph_response = client.get(
+        "/api/knowledge/graph-revision",
+        params={"project_id": "proj-1", "stage_id": "stage-1"},
+    )
+
+    assert submit_response.status_code == 200
+    assert submit_response.json()["success"] is True
+    assert graph_response.status_code == 200
+    graph_data = graph_response.json()
+    assert graph_data["project_id"] == "proj-1"
+    assert graph_data["stage_id"] == "stage-1"
+    assert graph_data["has_active_revision"] is True
+    assert graph_data["revision"]["graph_revision_id"] == "gr-proj-1-stage-stage-1-20260420130000"
+    assert graph_data["revision"]["revision_type"] == "deterministic_signal_projection"
+    assert graph_data["revision"]["node_count"] == 1
+    assert graph_data["revision"]["relation_count"] == 0
+    assert graph_data["revision"]["source_fact_batch_ids"]
+    assert graph_data["revision"]["source_signal_ids"]
+    assert len(graph_data["nodes"]) == 1
+    assert graph_data["nodes"][0]["graph_revision_id"] == "gr-proj-1-stage-stage-1-20260420130000"
+    assert graph_data["nodes"][0]["node_type"] == "weakness_topic"
+    assert graph_data["nodes"][0]["source_signal_ids"]
+    assert graph_data["nodes"][0]["supporting_fact_ids"]
+    assert graph_data["nodes"][0]["confidence"] > 0
+    assert graph_data["nodes"][0]["status"] == "active"
+    assert graph_data["relations"] == []
+
+
+def test_default_http_api_graph_revision_returns_empty_without_active_revision(tmp_path: Path) -> None:
+    db_path = tmp_path / "workbench.sqlite3"
+    session_path = tmp_path / "workspace-session.json"
+    client = TestClient(create_app(db_path=db_path, session_path=session_path))
+
+    graph_response = client.get(
+        "/api/knowledge/graph-revision",
+        params={"project_id": "proj-1", "stage_id": "stage-1"},
+    )
+
+    assert graph_response.status_code == 200
+    graph_data = graph_response.json()
+    assert graph_data["project_id"] == "proj-1"
+    assert graph_data["stage_id"] == "stage-1"
+    assert graph_data["has_active_revision"] is False
+    assert graph_data["revision"] is None
+    assert graph_data["nodes"] == []
+    assert graph_data["relations"] == []
+
+
 def test_http_api_returns_proposals_view() -> None:
     proposal_center = ProposalCenterService.for_testing()
     proposal_center.create_compression_proposals(

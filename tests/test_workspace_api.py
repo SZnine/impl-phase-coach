@@ -342,6 +342,84 @@ def test_workspace_api_graph_main_view_reads_active_graph_revision_before_profil
     }
 
 
+def test_workspace_api_returns_graph_revision_view_for_active_revision(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    _seed_active_graph_revision(store)
+    api = WorkspaceAPI(
+        flow=ReviewFlowService.for_testing(),
+        checkpoint_store=store,
+    )
+
+    view = api.get_graph_revision_view("proj-1", "stage-1")
+
+    assert view.project_id == "proj-1"
+    assert view.stage_id == "stage-1"
+    assert view.has_active_revision is True
+    assert view.revision is not None
+    assert view.revision.graph_revision_id == "gr-proj-1-stage-stage-1-20260420110000"
+    assert view.revision.project_id == "proj-1"
+    assert view.revision.scope_type == "stage"
+    assert view.revision.scope_ref == "stage-1"
+    assert view.revision.revision_type == "deterministic_signal_projection"
+    assert view.revision.status == "active"
+    assert view.revision.node_count == 1
+    assert view.revision.relation_count == 0
+    assert view.revision.source_fact_batch_ids == ["afb-eb-req-graph-read"]
+    assert view.revision.source_signal_ids == ["ks-graph-read-surface"]
+    assert view.revision.created_by == "knowledge_signal_graph_projector"
+    assert view.revision.created_at == "2026-04-20T11:00:00Z"
+    assert view.revision.activated_at == "2026-04-20T11:00:00Z"
+    assert view.revision.revision_summary == "1 signals projected into 1 nodes"
+    assert len(view.nodes) == 1
+    node = view.nodes[0]
+    assert node.knowledge_node_id == "kn-gr-proj-1-stage-stage-1-20260420110000-graph-read-surface"
+    assert node.graph_revision_id == "gr-proj-1-stage-stage-1-20260420110000"
+    assert node.topic_key == "graph-read-surface"
+    assert node.label == "Graph read surface"
+    assert node.node_type == "weakness_topic"
+    assert node.description == "The read side must consume the active graph revision."
+    assert node.source_signal_ids == ["ks-graph-read-surface"]
+    assert node.supporting_fact_ids == ["afi-graph-read-surface"]
+    assert node.confidence == 0.81
+    assert node.status == "active"
+    assert node.created_by == "knowledge_signal_graph_projector"
+    assert node.created_at == "2026-04-20T11:00:00Z"
+    assert node.updated_at == "2026-04-20T11:00:00Z"
+    assert node.payload == {"projector_version": "signal-graph-v1"}
+    assert view.relations == []
+
+
+def test_workspace_api_graph_revision_view_returns_empty_without_active_revision(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    profile_space = ProfileSpaceService.for_testing()
+    profile_space.sync_from_assessment(
+        project_id="proj-1",
+        stage_id="stage-1",
+        assessment={
+            "assessment_id": "a-profile-fallback",
+            "verdict": "partial",
+            "core_gaps": ["Profile fallback node"],
+            "misconceptions": [],
+        },
+    )
+    api = WorkspaceAPI(
+        flow=ReviewFlowService.for_testing(),
+        profile_space=profile_space,
+        checkpoint_store=store,
+    )
+
+    view = api.get_graph_revision_view("proj-1", "stage-1")
+
+    assert view.project_id == "proj-1"
+    assert view.stage_id == "stage-1"
+    assert view.has_active_revision is False
+    assert view.revision is None
+    assert view.nodes == []
+    assert view.relations == []
+
+
 def test_workspace_api_sorts_focus_clusters_by_reason_priority() -> None:
     profile_space = ProfileSpaceService.for_testing()
     profile_space.sync_from_assessment(

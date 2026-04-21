@@ -168,6 +168,52 @@ class KnowledgeGraphMainViewDTO(TransportModel):
 
 
 @dataclass(slots=True)
+class GraphRevisionSummaryDTO(TransportModel):
+    graph_revision_id: str
+    project_id: str
+    scope_type: str
+    scope_ref: str
+    revision_type: str
+    status: str
+    node_count: int
+    relation_count: int
+    source_fact_batch_ids: list[str] = field(default_factory=list)
+    source_signal_ids: list[str] = field(default_factory=list)
+    created_by: str = ""
+    created_at: str = ""
+    activated_at: str = ""
+    revision_summary: str = ""
+
+
+@dataclass(slots=True)
+class GraphRevisionNodeDTO(TransportModel):
+    knowledge_node_id: str
+    graph_revision_id: str
+    topic_key: str
+    label: str
+    node_type: str
+    description: str
+    source_signal_ids: list[str] = field(default_factory=list)
+    supporting_fact_ids: list[str] = field(default_factory=list)
+    confidence: float = 0.0
+    status: str = "active"
+    created_by: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    payload: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class GraphRevisionViewDTO(TransportModel):
+    project_id: str
+    stage_id: str
+    has_active_revision: bool = False
+    revision: GraphRevisionSummaryDTO | None = None
+    nodes: list[GraphRevisionNodeDTO] = field(default_factory=list)
+    relations: list[dict[str, object]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class ProposalItemDTO(TransportModel):
     proposal_id: str
     proposal_type: str
