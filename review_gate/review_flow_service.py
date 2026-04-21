@@ -548,6 +548,13 @@ class ReviewFlowService:
                 "gaps": list(assessment.get("core_gaps", [])),
                 "dimensions": list(assessment.get("dimension_hits", [])),
             }
+            writer_support_signals = [
+                dict(item)
+                for item in assessment.get("support_signals", [])
+                if isinstance(item, dict)
+            ]
+            if writer_support_signals:
+                writer_assessment["support_signals"] = writer_support_signals
             resolved_chain = self._generated_chain_resolver.resolve(
                 project_id=request.project_id,
                 stage_id=request.stage_id,

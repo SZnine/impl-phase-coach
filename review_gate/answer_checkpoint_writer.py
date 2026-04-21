@@ -32,6 +32,7 @@ class CheckpointWriteResult:
     knowledge_signal_count: int = 0
     graph_revision_id: str | None = None
     graph_node_count: int = 0
+    graph_relation_count: int = 0
 
 
 class AnswerCheckpointWriter:
@@ -144,6 +145,15 @@ class AnswerCheckpointWriter:
                 "summary": str(assessment.get("summary", "")),
             },
         )
+        evaluation_payload: dict[str, Any] = {
+            "reasoned_summary": str(assessment.get("summary", "")),
+            "diagnosed_gaps": self._coerce_str_list(assessment.get("gaps")),
+            "dimension_refs": self._coerce_str_list(assessment.get("dimensions")),
+        }
+        support_signals = self._coerce_dict_list(assessment.get("support_signals"))
+        if support_signals:
+            evaluation_payload["support_signals"] = support_signals
+
         evaluation_item = EvaluationItemRecord(
             evaluation_item_id=evaluation_item_id,
             evaluation_batch_id=evaluation_batch_id,
@@ -153,11 +163,7 @@ class AnswerCheckpointWriter:
             confidence=confidence,
             status="completed",
             evaluated_at=request.created_at,
-            payload={
-                "reasoned_summary": str(assessment.get("summary", "")),
-                "diagnosed_gaps": self._coerce_str_list(assessment.get("gaps")),
-                "dimension_refs": self._coerce_str_list(assessment.get("dimensions")),
-            },
+            payload=evaluation_payload,
         )
 
         self._store.insert_answer_batch(answer_batch)
@@ -182,8 +188,9 @@ class AnswerCheckpointWriter:
 
         graph_revision_id: str | None = None
         graph_node_count = 0
+        graph_relation_count = 0
         if knowledge_signals:
-            graph_revision, graph_nodes, active_pointer = self._graph_projector.project(
+            graph_revision, graph_nodes, graph_relations, active_pointer = self._graph_projector.project(
                 project_id=request.project_id,
                 scope_type="stage",
                 scope_ref=request.stage_id,
@@ -192,9 +199,11 @@ class AnswerCheckpointWriter:
             )
             self._store.insert_graph_revision(graph_revision)
             self._store.insert_graph_nodes(graph_nodes)
+            self._store.insert_graph_relations(graph_relations)
             self._store.upsert_active_graph_revision_pointer(active_pointer)
             graph_revision_id = graph_revision.graph_revision_id
             graph_node_count = len(graph_nodes)
+            graph_relation_count = len(graph_relations)
 
         self._store.insert_workflow_request(
             WorkflowRequestRecord(
@@ -232,6 +241,7 @@ class AnswerCheckpointWriter:
             knowledge_signal_count=len(knowledge_signals),
             graph_revision_id=graph_revision_id,
             graph_node_count=graph_node_count,
+            graph_relation_count=graph_relation_count,
         )
 
     def _materialize_fallback_question_chain(
@@ -297,3 +307,9 @@ class AnswerCheckpointWriter:
         else:
             items = [value]
         return [str(item) for item in items]
+
+    @staticmethod
+    def _coerce_dict_list(value: object) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        return [dict(item) for item in value if isinstance(item, dict)]

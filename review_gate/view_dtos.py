@@ -204,13 +204,32 @@ class GraphRevisionNodeDTO(TransportModel):
 
 
 @dataclass(slots=True)
+class GraphRevisionRelationDTO(TransportModel):
+    knowledge_relation_id: str
+    graph_revision_id: str
+    from_node_id: str
+    to_node_id: str
+    relation_type: str
+    directionality: str
+    description: str
+    source_signal_ids: list[str] = field(default_factory=list)
+    supporting_fact_ids: list[str] = field(default_factory=list)
+    confidence: float = 0.0
+    status: str = "active"
+    created_by: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    payload: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class GraphRevisionViewDTO(TransportModel):
     project_id: str
     stage_id: str
     has_active_revision: bool = False
     revision: GraphRevisionSummaryDTO | None = None
     nodes: list[GraphRevisionNodeDTO] = field(default_factory=list)
-    relations: list[dict[str, object]] = field(default_factory=list)
+    relations: list[GraphRevisionRelationDTO] = field(default_factory=list)
 
 
 @dataclass(slots=True)

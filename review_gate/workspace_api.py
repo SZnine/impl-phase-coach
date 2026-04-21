@@ -6,6 +6,7 @@ from review_gate.review_flow_service import ReviewFlowService
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
     GraphRevisionNodeDTO,
+    GraphRevisionRelationDTO,
     GraphRevisionSummaryDTO,
     GraphRevisionViewDTO,
     HomeProjectItemDTO,
@@ -358,6 +359,25 @@ class WorkspaceAPI:
             payload=dict(node.payload),
         )
 
+    def _graph_revision_relation_to_dto(self, relation) -> GraphRevisionRelationDTO:
+        return GraphRevisionRelationDTO(
+            knowledge_relation_id=relation.knowledge_relation_id,
+            graph_revision_id=relation.graph_revision_id,
+            from_node_id=relation.from_node_id,
+            to_node_id=relation.to_node_id,
+            relation_type=relation.relation_type,
+            directionality=relation.directionality,
+            description=relation.description,
+            source_signal_ids=list(relation.source_signal_ids),
+            supporting_fact_ids=list(relation.supporting_fact_ids),
+            confidence=relation.confidence,
+            status=relation.status,
+            created_by=relation.created_by,
+            created_at=relation.created_at,
+            updated_at=relation.updated_at,
+            payload=dict(relation.payload),
+        )
+
     def get_graph_revision_view(self, project_id: str, stage_id: str) -> GraphRevisionViewDTO:
         if self._checkpoint_store is None:
             return self._empty_graph_revision_view(project_id, stage_id)
@@ -371,13 +391,14 @@ class WorkspaceAPI:
             return self._empty_graph_revision_view(project_id, stage_id)
 
         nodes = self._checkpoint_store.list_graph_nodes(revision.graph_revision_id)
+        relations = self._checkpoint_store.list_graph_relations(revision.graph_revision_id)
         return GraphRevisionViewDTO(
             project_id=project_id,
             stage_id=stage_id,
             has_active_revision=True,
             revision=self._graph_revision_summary_to_dto(revision),
             nodes=[self._graph_revision_node_to_dto(node) for node in nodes],
-            relations=[],
+            relations=[self._graph_revision_relation_to_dto(relation) for relation in relations],
         )
 
     def _get_active_graph_main_view(

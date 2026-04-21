@@ -125,6 +125,65 @@ def test_assessment_synthesizer_counts_multiple_gaps_as_multiple_fact_items() ->
     ]
 
 
+def test_assessment_synthesizer_materializes_support_signals_as_relation_facts() -> None:
+    synthesizer = AssessmentSynthesizer()
+    evaluation_batch = EvaluationBatchRecord(
+        evaluation_batch_id="eb-support",
+        answer_batch_id="ab-support",
+        workflow_run_id="run-support",
+        project_id="proj-1",
+        stage_id="stage-1",
+        evaluated_by="evaluator_agent",
+        evaluator_version="test-v1",
+        confidence=0.84,
+        status="completed",
+        evaluated_at="2026-04-21T10:00:00Z",
+        payload={},
+    )
+    evaluation_item = EvaluationItemRecord(
+        evaluation_item_id="ei-support",
+        evaluation_batch_id="eb-support",
+        question_id="set-1-q-1",
+        answer_item_id="ai-support",
+        local_verdict="partial",
+        confidence=0.84,
+        status="completed",
+        evaluated_at="2026-04-21T10:00:00Z",
+        payload={
+            "reasoned_summary": "API boundary discipline still needs a supporting method.",
+            "diagnosed_gaps": ["API boundary discipline"],
+            "dimension_refs": ["boundary_awareness"],
+            "support_signals": [
+                {
+                    "source_label": "Boundary discipline",
+                    "source_node_type": "foundation",
+                    "target_label": "API boundary discipline",
+                    "target_node_type": "method",
+                    "basis_type": "support_basis_tag",
+                    "basis_key": "boundary_awareness",
+                }
+            ],
+        },
+    )
+
+    fact_batch, fact_items = synthesizer.synthesize(
+        workflow_run_id="run-support",
+        evaluation_batch=evaluation_batch,
+        evaluation_items=[evaluation_item],
+        evidence_spans=[],
+    )
+
+    assert fact_batch.payload["item_count"] == 2
+    assert [item.fact_type for item in fact_items] == ["gap", "support_relation"]
+    support_fact = fact_items[1]
+    assert support_fact.assessment_fact_item_id == "afi-ei-support-supports-boundary-discipline-api-boundary-discipline"
+    assert support_fact.topic_key == "boundary-discipline"
+    assert support_fact.title == "Boundary discipline supports API boundary discipline"
+    assert support_fact.payload["relation_type"] == "supports"
+    assert support_fact.payload["source_topic_key"] == "boundary-discipline"
+    assert support_fact.payload["target_topic_key"] == "api-boundary-discipline"
+
+
 def test_checkpoint_records_round_trip_json() -> None:
     records = [
         WorkflowRequestRecord(

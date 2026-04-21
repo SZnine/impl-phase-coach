@@ -11,6 +11,7 @@ from review_gate.checkpoint_models import (
     EvidenceSpanRecord,
     GraphRevisionRecord,
     KnowledgeNodeRecord,
+    KnowledgeRelationRecord,
     KnowledgeSignalRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
@@ -261,17 +262,33 @@ def test_checkpoint_storage_round_trips_graph_projection_records(tmp_path: Path)
         revision_type="deterministic_signal_projection",
         based_on_revision_id=None,
         source_fact_batch_ids=["afb-1"],
-        source_signal_ids=["ks-1"],
+        source_signal_ids=["ks-1", "ks-support-1"],
         status="active",
-        revision_summary="1 signal projected into 1 node",
-        node_count=1,
-        relation_count=0,
+        revision_summary="2 signals projected into 2 nodes and 1 relations",
+        node_count=2,
+        relation_count=1,
         created_by="knowledge_signal_graph_projector",
         created_at="2026-04-09T12:04:00Z",
         activated_at="2026-04-09T12:04:00Z",
         payload={"projector_version": "signal-graph-v1"},
     )
-    node = KnowledgeNodeRecord(
+    source_node = KnowledgeNodeRecord(
+        knowledge_node_id="kn-gr-proj-1-stage-1-20260409120400-boundary-discipline",
+        graph_revision_id="gr-proj-1-stage-1-20260409120400",
+        topic_key="boundary-discipline",
+        label="Boundary discipline",
+        node_type="evidence_topic",
+        description="Boundary discipline was cited as supporting evidence.",
+        source_signal_ids=["ks-support-1"],
+        supporting_fact_ids=["afi-support-1"],
+        confidence=0.82,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-09T12:04:00Z",
+        updated_at="2026-04-09T12:04:00Z",
+        payload={"signal_types": ["support_relation"]},
+    )
+    target_node = KnowledgeNodeRecord(
         knowledge_node_id="kn-gr-proj-1-stage-1-20260409120400-proposal-execution-separation",
         graph_revision_id="gr-proj-1-stage-1-20260409120400",
         topic_key="proposal-execution-separation",
@@ -287,6 +304,26 @@ def test_checkpoint_storage_round_trips_graph_projection_records(tmp_path: Path)
         updated_at="2026-04-09T12:04:00Z",
         payload={"signal_types": ["weakness"]},
     )
+    relation = KnowledgeRelationRecord(
+        knowledge_relation_id=(
+            "kr-gr-proj-1-stage-1-20260409120400"
+            "-boundary-discipline-supports-proposal-execution-separation"
+        ),
+        graph_revision_id="gr-proj-1-stage-1-20260409120400",
+        from_node_id=source_node.knowledge_node_id,
+        to_node_id=target_node.knowledge_node_id,
+        relation_type="supports",
+        directionality="directed",
+        description="Boundary discipline supports proposal execution separation.",
+        source_signal_ids=["ks-support-1"],
+        supporting_fact_ids=["afi-support-1"],
+        confidence=0.82,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-09T12:04:00Z",
+        updated_at="2026-04-09T12:04:00Z",
+        payload={"basis_key": "boundary_awareness"},
+    )
     pointer = ActiveGraphRevisionPointerRecord(
         project_id="proj-1",
         scope_type="stage",
@@ -298,11 +335,13 @@ def test_checkpoint_storage_round_trips_graph_projection_records(tmp_path: Path)
     )
 
     store.insert_graph_revision(revision)
-    store.insert_graph_nodes([node])
+    store.insert_graph_nodes([source_node, target_node])
+    store.insert_graph_relations([relation])
     store.upsert_active_graph_revision_pointer(pointer)
 
     assert store.get_graph_revision("gr-proj-1-stage-1-20260409120400") == revision
-    assert store.list_graph_nodes("gr-proj-1-stage-1-20260409120400") == [node]
+    assert store.list_graph_nodes("gr-proj-1-stage-1-20260409120400") == [source_node, target_node]
+    assert store.list_graph_relations("gr-proj-1-stage-1-20260409120400") == [relation]
     assert store.get_active_graph_revision_pointer("proj-1", "stage", "stage-1") == pointer
 
 

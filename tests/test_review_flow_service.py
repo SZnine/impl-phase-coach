@@ -1711,12 +1711,18 @@ def test_submit_answer_normalizes_raw_evaluator_output_before_persisting_checkpo
     fact_batch = store.get_latest_assessment_fact_batch("proj-1", "stage-1")
     assert fact_batch is not None
     assert fact_batch.assessment_fact_batch_id == "afb-eb-req-eval-raw-1"
-    assert fact_batch.payload["item_count"] == 2
+    assert fact_batch.payload["item_count"] == 3
 
     fact_items = store.list_assessment_fact_items("afb-eb-req-eval-raw-1")
     assert [item.topic_key for item in fact_items] == [
-        "Misused sqlite transaction handling.",
-        "No regression test for malformed SSE chunks.",
+        "misused-sqlite-transaction-handling",
+        "no-regression-test-for-malformed-sse-chunks",
+        "boundary-discipline",
+    ]
+    assert [item.fact_type for item in fact_items] == [
+        "gap",
+        "gap",
+        "support_relation",
     ]
 
 

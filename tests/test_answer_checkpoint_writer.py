@@ -17,6 +17,7 @@ from review_gate.checkpoint_models import (
     EvaluationItemRecord,
     GraphRevisionRecord,
     KnowledgeNodeRecord,
+    KnowledgeRelationRecord,
     KnowledgeSignalRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
@@ -444,6 +445,82 @@ def test_answer_checkpoint_writer_uses_assessment_synthesizer_for_multiple_gaps(
                 "evidence_span_ids": [],
             },
         ),
+    ]
+
+
+def test_answer_checkpoint_writer_persists_support_relations_from_assessment(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    writer = AnswerCheckpointWriter(store=store, synthesizer=AssessmentSynthesizer())
+    _seed_generated_question_chain(store, request_id="req-qgen-1", created_at="2026-04-10T10:05:00Z")
+
+    result = writer.write(
+        request=_writer_request(
+            request_id="req-submit-rel",
+            answer_text="API boundary discipline is weak, but boundary discipline foundations can support it.",
+            created_at="2026-04-21T10:00:00Z",
+        ),
+        resolved_chain=_resolved_chain(),
+        assessment={
+            "verdict": "partial",
+            "score": 0.74,
+            "summary": "API boundary discipline needs grounding in boundary discipline.",
+            "gaps": ["api-boundary-discipline"],
+            "dimensions": ["boundary_awareness"],
+            "support_signals": [
+                {
+                    "source_label": "Boundary discipline",
+                    "source_node_type": "foundation",
+                    "target_label": "api-boundary-discipline",
+                    "target_node_type": "weakness_topic",
+                    "basis_type": "dimension_hit",
+                    "basis_key": "boundary_awareness",
+                }
+            ],
+        },
+    )
+
+    graph_revision_id = "gr-proj-1-stage-stage-1-20260421100000"
+    relation_fact_id = (
+        "afi-ei-req-submit-rel-0-supports-boundary-discipline-api-boundary-discipline"
+    )
+    relation_signal_id = (
+        f"ks-{relation_fact_id}-support_relation-boundary-discipline"
+    )
+
+    assert result.graph_revision_id == graph_revision_id
+    assert result.graph_node_count == 2
+    assert result.graph_relation_count == 1
+    assert store.get_graph_revision(graph_revision_id).relation_count == 1  # type: ignore[union-attr]
+    assert store.list_graph_relations(graph_revision_id) == [
+        KnowledgeRelationRecord(
+            knowledge_relation_id=(
+                "kr-gr-proj-1-stage-stage-1-20260421100000"
+                "-boundary-discipline-supports-api-boundary-discipline"
+            ),
+            graph_revision_id=graph_revision_id,
+            from_node_id=(
+                "kn-gr-proj-1-stage-stage-1-20260421100000-boundary-discipline"
+            ),
+            to_node_id=(
+                "kn-gr-proj-1-stage-stage-1-20260421100000-api-boundary-discipline"
+            ),
+            relation_type="supports",
+            directionality="directed",
+            description="Boundary discipline supports api-boundary-discipline.",
+            source_signal_ids=[relation_signal_id],
+            supporting_fact_ids=[relation_fact_id],
+            confidence=0.74,
+            status="active",
+            created_by="knowledge_signal_graph_projector",
+            created_at="2026-04-21T10:00:00Z",
+            updated_at="2026-04-21T10:00:00Z",
+            payload={
+                "projector_version": "signal-graph-v1",
+                "basis_type": "dimension_hit",
+                "basis_key": "boundary_awareness",
+            },
+        )
     ]
 
 

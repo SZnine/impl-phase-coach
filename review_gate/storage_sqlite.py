@@ -32,6 +32,7 @@ from review_gate.checkpoint_models import (
     EvidenceSpanRecord,
     GraphRevisionRecord,
     KnowledgeNodeRecord,
+    KnowledgeRelationRecord,
     KnowledgeSignalRecord,
     QuestionBatchRecord,
     QuestionItemRecord,
@@ -463,6 +464,35 @@ class SQLiteStore:
 
                 CREATE INDEX IF NOT EXISTS idx_graph_knowledge_nodes_topic
                     ON graph_knowledge_nodes(topic_key);
+
+                CREATE TABLE IF NOT EXISTS graph_knowledge_relations (
+                    knowledge_relation_id TEXT PRIMARY KEY,
+                    graph_revision_id TEXT NOT NULL,
+                    from_node_id TEXT NOT NULL,
+                    to_node_id TEXT NOT NULL,
+                    relation_type TEXT NOT NULL,
+                    directionality TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY (graph_revision_id) REFERENCES graph_revisions(graph_revision_id),
+                    FOREIGN KEY (from_node_id) REFERENCES graph_knowledge_nodes(knowledge_node_id),
+                    FOREIGN KEY (to_node_id) REFERENCES graph_knowledge_nodes(knowledge_node_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_graph_knowledge_relations_revision
+                    ON graph_knowledge_relations(graph_revision_id);
+
+                CREATE INDEX IF NOT EXISTS idx_graph_knowledge_relations_from_node
+                    ON graph_knowledge_relations(from_node_id);
+
+                CREATE INDEX IF NOT EXISTS idx_graph_knowledge_relations_to_node
+                    ON graph_knowledge_relations(to_node_id);
+
+                CREATE INDEX IF NOT EXISTS idx_graph_knowledge_relations_type
+                    ON graph_knowledge_relations(relation_type);
 
                 CREATE TABLE IF NOT EXISTS active_graph_revision_pointers (
                     project_id TEXT NOT NULL,
@@ -1613,6 +1643,52 @@ class SQLiteStore:
             (graph_revision_id,),
         )
         return [KnowledgeNodeRecord.from_json(row["payload"]) for row in rows]
+
+    def insert_graph_relations(self, records: list[KnowledgeRelationRecord]) -> None:
+        with self._connect() as conn:
+            for record in records:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO graph_knowledge_relations (
+                        knowledge_relation_id,
+                        graph_revision_id,
+                        from_node_id,
+                        to_node_id,
+                        relation_type,
+                        directionality,
+                        confidence,
+                        status,
+                        created_at,
+                        updated_at,
+                        payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.knowledge_relation_id,
+                        record.graph_revision_id,
+                        record.from_node_id,
+                        record.to_node_id,
+                        record.relation_type,
+                        record.directionality,
+                        record.confidence,
+                        record.status,
+                        record.created_at,
+                        record.updated_at,
+                        record.to_json(),
+                    ),
+                )
+
+    def list_graph_relations(self, graph_revision_id: str) -> list[KnowledgeRelationRecord]:
+        rows = self._fetch_all(
+            """
+            SELECT payload
+            FROM graph_knowledge_relations
+            WHERE graph_revision_id = ?
+            ORDER BY relation_type, from_node_id, to_node_id, knowledge_relation_id
+            """,
+            (graph_revision_id,),
+        )
+        return [KnowledgeRelationRecord.from_json(row["payload"]) for row in rows]
 
     def upsert_active_graph_revision_pointer(self, record: ActiveGraphRevisionPointerRecord) -> None:
         with self._connect() as conn:

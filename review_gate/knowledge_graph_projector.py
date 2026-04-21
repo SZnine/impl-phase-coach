@@ -7,6 +7,7 @@ from review_gate.checkpoint_models import (
     ActiveGraphRevisionPointerRecord,
     GraphRevisionRecord,
     KnowledgeNodeRecord,
+    KnowledgeRelationRecord,
     KnowledgeSignalRecord,
 )
 
@@ -25,7 +26,12 @@ class KnowledgeSignalGraphProjector:
         signals: list[KnowledgeSignalRecord],
         created_at: str,
         based_on_revision_id: str | None = None,
-    ) -> tuple[GraphRevisionRecord, list[KnowledgeNodeRecord], ActiveGraphRevisionPointerRecord]:
+    ) -> tuple[
+        GraphRevisionRecord,
+        list[KnowledgeNodeRecord],
+        list[KnowledgeRelationRecord],
+        ActiveGraphRevisionPointerRecord,
+    ]:
         graph_revision_id = self._revision_id(
             project_id=project_id,
             scope_type=scope_type,
@@ -37,8 +43,17 @@ class KnowledgeSignalGraphProjector:
             signals=signals,
             created_at=created_at,
         )
+        relations = self._project_relations(
+            graph_revision_id=graph_revision_id,
+            signals=signals,
+            nodes=nodes,
+            created_at=created_at,
+        )
         source_signal_ids = sorted({signal.signal_id for signal in signals})
         source_fact_batch_ids = sorted({signal.assessment_fact_batch_id for signal in signals})
+        revision_summary = f"{len(source_signal_ids)} signals projected into {len(nodes)} nodes"
+        if relations:
+            revision_summary = f"{revision_summary} and {len(relations)} relations"
         revision = GraphRevisionRecord(
             graph_revision_id=graph_revision_id,
             project_id=project_id,
@@ -49,9 +64,9 @@ class KnowledgeSignalGraphProjector:
             source_fact_batch_ids=source_fact_batch_ids,
             source_signal_ids=source_signal_ids,
             status="active",
-            revision_summary=f"{len(source_signal_ids)} signals projected into {len(nodes)} nodes",
+            revision_summary=revision_summary,
             node_count=len(nodes),
-            relation_count=0,
+            relation_count=len(relations),
             created_by=self.created_by,
             created_at=created_at,
             activated_at=created_at,
@@ -66,7 +81,7 @@ class KnowledgeSignalGraphProjector:
             updated_by=self.created_by,
             payload={"projector_version": self.projector_version},
         )
-        return revision, nodes, pointer
+        return revision, nodes, relations, pointer
 
     def _project_nodes(
         self,
@@ -108,11 +123,64 @@ class KnowledgeSignalGraphProjector:
             )
         return nodes
 
+    def _project_relations(
+        self,
+        *,
+        graph_revision_id: str,
+        signals: list[KnowledgeSignalRecord],
+        nodes: list[KnowledgeNodeRecord],
+        created_at: str,
+    ) -> list[KnowledgeRelationRecord]:
+        node_by_topic = {node.topic_key: node for node in nodes}
+        relations: list[KnowledgeRelationRecord] = []
+        for signal in sorted(signals, key=lambda item: item.signal_id):
+            if signal.signal_type != "support_relation":
+                continue
+            relation_type = str(signal.payload.get("relation_type", "")).strip()
+            source_topic_key = str(signal.payload.get("source_topic_key", signal.topic_key)).strip()
+            target_topic_key = str(signal.payload.get("target_topic_key", "")).strip()
+            if relation_type != "supports" or not source_topic_key or not target_topic_key:
+                continue
+            source_node = node_by_topic.get(source_topic_key)
+            target_node = node_by_topic.get(target_topic_key)
+            if source_node is None or target_node is None:
+                continue
+            relation_id = (
+                f"kr-{graph_revision_id}-"
+                f"{self._safe_key(source_topic_key)}-supports-{self._safe_key(target_topic_key)}"
+            )
+            relations.append(
+                KnowledgeRelationRecord(
+                    knowledge_relation_id=relation_id,
+                    graph_revision_id=graph_revision_id,
+                    from_node_id=source_node.knowledge_node_id,
+                    to_node_id=target_node.knowledge_node_id,
+                    relation_type="supports",
+                    directionality=str(signal.payload.get("directionality", "directed")),
+                    description=str(signal.payload.get("description", signal.summary)),
+                    source_signal_ids=[signal.signal_id],
+                    supporting_fact_ids=[signal.assessment_fact_item_id],
+                    confidence=signal.confidence,
+                    status=signal.status,
+                    created_by=self.created_by,
+                    created_at=created_at,
+                    updated_at=created_at,
+                    payload={
+                        "projector_version": self.projector_version,
+                        "basis_type": str(signal.payload.get("basis_type", "")),
+                        "basis_key": str(signal.payload.get("basis_key", "")),
+                    },
+                )
+            )
+        return relations
+
     def _node_type(self, signal_types: list[str]) -> str:
         if "weakness" in signal_types:
             return "weakness_topic"
         if signal_types == ["strength"]:
             return "strength_topic"
+        if "support_relation" in signal_types:
+            return "evidence_topic"
         return "evidence_topic"
 
     def _polarity_counts(self, signals: list[KnowledgeSignalRecord]) -> dict[str, int]:

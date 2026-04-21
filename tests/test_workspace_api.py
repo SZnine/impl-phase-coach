@@ -5,6 +5,7 @@ from review_gate.checkpoint_models import (
     ActiveGraphRevisionPointerRecord,
     GraphRevisionRecord,
     KnowledgeNodeRecord,
+    KnowledgeRelationRecord,
 )
 from review_gate.domain import FocusExplanation
 from review_gate.profile_space_service import ProfileSpaceService
@@ -388,6 +389,63 @@ def test_workspace_api_returns_graph_revision_view_for_active_revision(tmp_path)
     assert node.updated_at == "2026-04-20T11:00:00Z"
     assert node.payload == {"projector_version": "signal-graph-v1"}
     assert view.relations == []
+
+
+def test_workspace_api_returns_graph_revision_relations_for_active_revision(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    _seed_active_graph_revision(store)
+    graph_revision_id = "gr-proj-1-stage-stage-1-20260420110000"
+    source_node = KnowledgeNodeRecord(
+        knowledge_node_id=f"kn-{graph_revision_id}-boundary-discipline",
+        graph_revision_id=graph_revision_id,
+        topic_key="boundary-discipline",
+        label="Boundary discipline",
+        node_type="evidence_topic",
+        description="Boundary discipline can support graph read surface.",
+        source_signal_ids=["ks-boundary-discipline"],
+        supporting_fact_ids=["afi-boundary-discipline"],
+        confidence=0.83,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-20T11:00:00Z",
+        updated_at="2026-04-20T11:00:00Z",
+        payload={"projector_version": "signal-graph-v1"},
+    )
+    relation = KnowledgeRelationRecord(
+        knowledge_relation_id=f"kr-{graph_revision_id}-boundary-discipline-supports-graph-read-surface",
+        graph_revision_id=graph_revision_id,
+        from_node_id=source_node.knowledge_node_id,
+        to_node_id=f"kn-{graph_revision_id}-graph-read-surface",
+        relation_type="supports",
+        directionality="directed",
+        description="Boundary discipline supports graph read surface.",
+        source_signal_ids=["ks-boundary-support"],
+        supporting_fact_ids=["afi-boundary-support"],
+        confidence=0.83,
+        status="active",
+        created_by="knowledge_signal_graph_projector",
+        created_at="2026-04-20T11:00:00Z",
+        updated_at="2026-04-20T11:00:00Z",
+        payload={"basis_type": "dimension_hit", "basis_key": "boundary_awareness"},
+    )
+    store.insert_graph_nodes([source_node])
+    store.insert_graph_relations([relation])
+    api = WorkspaceAPI(
+        flow=ReviewFlowService.for_testing(),
+        checkpoint_store=store,
+    )
+
+    view = api.get_graph_revision_view("proj-1", "stage-1")
+
+    assert len(view.relations) == 1
+    assert view.relations[0].knowledge_relation_id == relation.knowledge_relation_id
+    assert view.relations[0].from_node_id == source_node.knowledge_node_id
+    assert view.relations[0].to_node_id == f"kn-{graph_revision_id}-graph-read-surface"
+    assert view.relations[0].relation_type == "supports"
+    assert view.relations[0].source_signal_ids == ["ks-boundary-support"]
+    assert view.relations[0].supporting_fact_ids == ["afi-boundary-support"]
+    assert view.relations[0].payload == {"basis_type": "dimension_hit", "basis_key": "boundary_awareness"}
 
 
 def test_workspace_api_graph_revision_view_returns_empty_without_active_revision(tmp_path) -> None:

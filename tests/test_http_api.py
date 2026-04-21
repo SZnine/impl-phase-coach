@@ -10,11 +10,46 @@ from review_gate.project_agent_question_generation_client import ProjectAgentQue
 from review_gate.profile_space_service import ProfileSpaceService
 from review_gate.proposal_center_service import ProposalCenterService
 from review_gate.review_flow_service import ReviewFlowService
+from review_gate.storage_sqlite import SQLiteStore
 from review_gate.workspace_api import WorkspaceAPI
 
 
 def create_client() -> TestClient:
     return TestClient(create_app(api=WorkspaceAPI(flow=ReviewFlowService.for_testing())))
+
+
+class SupportRelationAssessmentClient:
+    def assess(self, request: dict) -> dict:
+        return {
+            "request_id": request["request_id"],
+            "assessment": {
+                "score_total": 0.76,
+                "dimension_scores": {
+                    "correctness": 3,
+                    "reasoning": 2,
+                    "boundary_awareness": 3,
+                    "stability": 3,
+                },
+                "verdict": "partial",
+                "core_gaps": ["api-boundary-discipline"],
+                "misconceptions": [],
+                "support_basis_tags": [
+                    {
+                        "source_label": "Boundary discipline",
+                        "source_node_type": "foundation",
+                        "target_label": "api-boundary-discipline",
+                        "target_node_type": "method",
+                        "basis_key": "boundary_awareness",
+                    }
+                ],
+                "evidence": ["The answer names API boundaries but does not describe the contract."],
+            },
+            "recommended_action": "continue_answering",
+            "recommended_follow_up_questions": ["Explain how the API contract is enforced."],
+            "learning_recommendations": ["Review boundary discipline."],
+            "warnings": [],
+            "confidence": 0.76,
+        }
 
 
 def test_http_api_returns_home_view() -> None:
@@ -298,6 +333,69 @@ def test_default_http_api_graph_revision_reads_submit_side_active_revision(tmp_p
     assert graph_data["nodes"][0]["confidence"] > 0
     assert graph_data["nodes"][0]["status"] == "active"
     assert graph_data["relations"] == []
+
+
+def test_http_api_graph_revision_reads_support_relation_after_submit(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "workbench.sqlite3")
+    store.initialize()
+    flow = ReviewFlowService(
+        assessment_client=SupportRelationAssessmentClient(),
+        store=store,
+    )
+    client = TestClient(
+        create_app(
+            api=WorkspaceAPI(
+                flow=flow,
+                checkpoint_store=store,
+            )
+        )
+    )
+    submit_response = client.post(
+        "/api/actions/submit-answer",
+        json={
+            "request_id": "req-graph-relation-view",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "question_detail",
+            "actor_id": "local-user",
+            "created_at": "2026-04-21T11:00:00Z",
+            "question_set_id": "set-1",
+            "question_id": "set-1-q-1",
+            "answer_text": "The API boundary exists, but I did not define the request and response contract clearly.",
+            "draft_id": None,
+        },
+    )
+
+    graph_response = client.get(
+        "/api/knowledge/graph-revision",
+        params={"project_id": "proj-1", "stage_id": "stage-1"},
+    )
+
+    assert submit_response.status_code == 200
+    assert submit_response.json()["success"] is True
+    assert graph_response.status_code == 200
+    graph_data = graph_response.json()
+    assert graph_data["has_active_revision"] is True
+    assert graph_data["revision"]["graph_revision_id"] == "gr-proj-1-stage-stage-1-20260421110000"
+    assert graph_data["revision"]["node_count"] == 2
+    assert graph_data["revision"]["relation_count"] == 1
+    assert {node["topic_key"] for node in graph_data["nodes"]} == {
+        "api-boundary-discipline",
+        "boundary-discipline",
+    }
+    assert len(graph_data["relations"]) == 1
+    relation = graph_data["relations"][0]
+    assert relation["relation_type"] == "supports"
+    assert relation["directionality"] == "directed"
+    assert relation["from_node_id"].endswith("-boundary-discipline")
+    assert relation["to_node_id"].endswith("-api-boundary-discipline")
+    assert relation["source_signal_ids"]
+    assert relation["supporting_fact_ids"]
+    assert relation["payload"] == {
+        "basis_type": "support_basis_tag",
+        "basis_key": "boundary_awareness",
+        "projector_version": "signal-graph-v1",
+    }
 
 
 def test_default_http_api_graph_revision_returns_empty_without_active_revision(tmp_path: Path) -> None:

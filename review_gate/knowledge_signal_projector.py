@@ -50,11 +50,30 @@ class AssessmentFactSignalProjector:
                 "description": str(fact_item.payload.get("description", "")),
                 "source_payload": fact_item.payload,
                 "fact_batch_synthesizer_version": fact_batch.synthesizer_version,
+                **{
+                    key: value
+                    for key, value in fact_item.payload.items()
+                    if key
+                    in {
+                        "relation_type",
+                        "directionality",
+                        "source_label",
+                        "source_node_type",
+                        "source_topic_key",
+                        "target_label",
+                        "target_node_type",
+                        "target_topic_key",
+                        "basis_type",
+                        "basis_key",
+                    }
+                },
             },
         )
 
     def _classify_fact(self, fact_type: str) -> tuple[str, str]:
         normalized = fact_type.strip().lower()
+        if normalized == "support_relation":
+            return "support_relation", "positive"
         if normalized in {"gap", "weakness", "misconception"}:
             return "weakness", "negative"
         if normalized in {"strength", "mastery"}:

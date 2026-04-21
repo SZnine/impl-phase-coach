@@ -487,6 +487,45 @@ class KnowledgeNodeRecord(JsonSerializable):
 
 
 @dataclass(slots=True)
+class KnowledgeRelationRecord(JsonSerializable):
+    knowledge_relation_id: str
+    graph_revision_id: str
+    from_node_id: str
+    to_node_id: str
+    relation_type: str
+    directionality: str
+    description: str
+    source_signal_ids: list[str]
+    supporting_fact_ids: list[str]
+    confidence: float
+    status: str
+    created_by: str
+    created_at: str
+    updated_at: str
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Self:
+        return cls(
+            knowledge_relation_id=_coerce_str(payload["knowledge_relation_id"]),
+            graph_revision_id=_coerce_str(payload.get("graph_revision_id"), ""),
+            from_node_id=_coerce_str(payload.get("from_node_id"), ""),
+            to_node_id=_coerce_str(payload.get("to_node_id"), ""),
+            relation_type=_coerce_str(payload.get("relation_type"), ""),
+            directionality=_coerce_str(payload.get("directionality"), ""),
+            description=_coerce_str(payload.get("description"), ""),
+            source_signal_ids=_coerce_str_list(payload.get("source_signal_ids")),
+            supporting_fact_ids=_coerce_str_list(payload.get("supporting_fact_ids")),
+            confidence=_coerce_float(payload.get("confidence"), 0.0),
+            status=_coerce_str(payload.get("status"), ""),
+            created_by=_coerce_str(payload.get("created_by"), ""),
+            created_at=_coerce_str(payload.get("created_at"), ""),
+            updated_at=_coerce_str(payload.get("updated_at"), ""),
+            payload=_coerce_payload_dict(payload.get("payload")),
+        )
+
+
+@dataclass(slots=True)
 class ActiveGraphRevisionPointerRecord(JsonSerializable):
     project_id: str
     scope_type: str

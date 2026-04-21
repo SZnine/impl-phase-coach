@@ -69,6 +69,54 @@ def test_projector_converts_gap_fact_to_weakness_signal() -> None:
     assert signals[0].payload["description"] == "Answer still mixes proposal status with execution status."
 
 
+def test_projector_converts_support_relation_fact_to_support_relation_signal() -> None:
+    fact_batch = AssessmentFactBatchRecord(
+        assessment_fact_batch_id="afb-support",
+        evaluation_batch_id="eb-support",
+        workflow_run_id="run-support",
+        synthesized_by="assessment_synthesizer",
+        synthesizer_version="v1",
+        status="completed",
+        synthesized_at="2026-04-21T10:00:00Z",
+        payload={},
+    )
+    fact_item = AssessmentFactItemRecord(
+        assessment_fact_item_id="afi-support",
+        assessment_fact_batch_id="afb-support",
+        source_evaluation_item_id="ei-support",
+        fact_type="support_relation",
+        topic_key="boundary-discipline",
+        title="Boundary discipline supports API boundary discipline",
+        confidence=0.84,
+        status="active",
+        created_at="2026-04-21T10:00:00Z",
+        payload={
+            "relation_type": "supports",
+            "directionality": "directed",
+            "source_label": "Boundary discipline",
+            "source_node_type": "foundation",
+            "source_topic_key": "boundary-discipline",
+            "target_label": "API boundary discipline",
+            "target_node_type": "method",
+            "target_topic_key": "api-boundary-discipline",
+            "basis_type": "support_basis_tag",
+            "basis_key": "boundary_awareness",
+            "description": "Boundary discipline supports API boundary discipline.",
+        },
+    )
+
+    signals = AssessmentFactSignalProjector().project(fact_batch=fact_batch, fact_items=[fact_item])
+
+    assert len(signals) == 1
+    assert signals[0].signal_id == "ks-afi-support-support_relation-boundary-discipline"
+    assert signals[0].signal_type == "support_relation"
+    assert signals[0].topic_key == "boundary-discipline"
+    assert signals[0].polarity == "positive"
+    assert signals[0].summary == "Boundary discipline supports API boundary discipline"
+    assert signals[0].payload["target_topic_key"] == "api-boundary-discipline"
+    assert signals[0].payload["relation_type"] == "supports"
+
+
 def test_projector_preserves_one_signal_per_fact_item() -> None:
     fact_batch = AssessmentFactBatchRecord(
         assessment_fact_batch_id="afb-1",
