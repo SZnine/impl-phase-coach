@@ -32,6 +32,8 @@ class EvaluatorAgentPromptBuilder:
                 "Keep verdict and dimension_scores inside the nested assessment object, not at the top level.",
                 "Use only the canonical dimension keys: correctness, reasoning, decision_awareness, boundary_awareness, stability.",
                 "Core gaps, misconceptions, and evidence should be arrays of strings whenever possible.",
+                "Write core_gaps, misconceptions, follow-up questions, learning recommendations, and warnings in Simplified Chinese.",
+                "Keep code identifiers, module names, API paths, command snippets, and established technical terms unchanged.",
                 "When a core gap can be supported by a foundation, concept, or method, return assessment.support_basis_tags.",
                 "Each support basis tag must connect a source_label to a target_label; target_label must match one item from assessment.core_gaps.",
                 "Use only these support basis keys when applicable: state_modeling, boundary_awareness, decision_awareness.",

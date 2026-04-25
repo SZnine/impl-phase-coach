@@ -848,6 +848,139 @@ def test_submit_answer_action_projects_derived_support_signals_into_supports_rel
     assert index_view.items[0].title == "API boundary discipline"
 
 
+def test_latest_assessment_review_uses_readable_chinese_summary_shell() -> None:
+    flow = ReviewFlowService(
+        assessment_client=CapturingAssessmentClient(
+            verdict="partial",
+            core_gaps=["API boundary discipline"],
+            misconceptions=[],
+        )
+    )
+    api = WorkspaceAPI(flow=flow, profile_space=ProfileSpaceService.for_testing())
+
+    api.submit_answer_action(
+        SubmitAnswerRequest(
+            request_id="req-cn-review-summary",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-25T10:00:00Z",
+            question_set_id="set-1",
+            question_id="q-1",
+            answer_text="This answer is long enough to create a partial assessment.",
+            draft_id=None,
+        )
+    )
+
+    review = api.get_latest_assessment_review_view("proj-1", "stage-1")
+
+    assert review.review_title == "方向正确，但还需要补齐关键缺口"
+    assert review.review_summary == "这次回答有可取之处，但还需要讲清：API boundary discipline。"
+    assert "锛" not in review.review_summary
+    assert "銆" not in review.review_summary
+
+
+def test_latest_assessment_review_localizes_common_english_gap_sentence() -> None:
+    flow = ReviewFlowService(
+        assessment_client=CapturingAssessmentClient(
+            verdict="partial",
+            core_gaps=[
+                "Did not explain why transport question ids must remain stable from generated-question HTTP action through submit."
+            ],
+            misconceptions=[],
+        )
+    )
+    api = WorkspaceAPI(flow=flow, profile_space=ProfileSpaceService.for_testing())
+
+    api.submit_answer_action(
+        SubmitAnswerRequest(
+            request_id="req-localize-gap",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-25T10:05:00Z",
+            question_set_id="set-1",
+            question_id="q-1",
+            answer_text="This answer is long enough to create a partial assessment.",
+            draft_id=None,
+        )
+    )
+
+    review = api.get_latest_assessment_review_view("proj-1", "stage-1")
+
+    assert review.review_summary == (
+        "这次回答有可取之处，但还需要讲清：为什么 transport question ids 必须在 generated-question HTTP action 到 submit 的链路中保持稳定。"
+    )
+
+
+def test_latest_assessment_review_localizes_across_stability_gap_sentence() -> None:
+    flow = ReviewFlowService(
+        assessment_client=CapturingAssessmentClient(
+            verdict="weak",
+            core_gaps=[
+                "Did not explain why transport question ids must remain stable across generation and submit."
+            ],
+            misconceptions=[],
+        )
+    )
+    api = WorkspaceAPI(flow=flow, profile_space=ProfileSpaceService.for_testing())
+
+    api.submit_answer_action(
+        SubmitAnswerRequest(
+            request_id="req-localize-across-gap",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-25T10:06:00Z",
+            question_set_id="set-1",
+            question_id="q-1",
+            answer_text="This answer is long enough to create an assessment record.",
+            draft_id=None,
+        )
+    )
+
+    review = api.get_latest_assessment_review_view("proj-1", "stage-1")
+
+    assert review.review_summary == "这次回答有可取之处，但还需要讲清：为什么 transport question ids 必须在 generation 和 submit 两段流程中保持稳定。"
+
+
+def test_latest_assessment_review_localizes_minimum_persisted_generated_question_gap() -> None:
+    flow = ReviewFlowService(
+        assessment_client=CapturingAssessmentClient(
+            verdict="weak",
+            core_gaps=[
+                "Did not identify the minimum persisted generated-question fields needed to keep transport question ids stable across generation and submit."
+            ],
+            misconceptions=[],
+        )
+    )
+    api = WorkspaceAPI(flow=flow, profile_space=ProfileSpaceService.for_testing())
+
+    api.submit_answer_action(
+        SubmitAnswerRequest(
+            request_id="req-localize-minimum-fields-gap",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-25T10:07:00Z",
+            question_set_id="set-1",
+            question_id="q-1",
+            answer_text="This answer is long enough to create an assessment record.",
+            draft_id=None,
+        )
+    )
+
+    review = api.get_latest_assessment_review_view("proj-1", "stage-1")
+
+    assert review.review_summary == (
+        "这次回答有可取之处，但还需要讲清：为了让 transport question ids 在 generation 和 submit 两段流程中保持稳定，generated-question checkpoint 至少需要持久化哪些字段。"
+    )
+
+
 def test_submit_answer_request_and_response_are_stable_transport_models() -> None:
     request = SubmitAnswerRequest(
         request_id="req-1",

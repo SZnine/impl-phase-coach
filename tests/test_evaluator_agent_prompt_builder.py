@@ -128,3 +128,20 @@ def test_evaluator_agent_prompt_builder_requests_support_basis_tags_for_graph_re
     assert "support_basis_tags" in prompt.user_prompt
     assert "source_label" in prompt.user_prompt
     assert "target_node_type" in prompt.user_prompt
+
+
+def test_evaluator_agent_prompt_builder_requests_chinese_learner_visible_text() -> None:
+    builder = EvaluatorAgentPromptBuilder()
+
+    prompt = builder.build(
+        {
+            "request_id": "req-22",
+            "project_context": "review_gate full live workflow",
+            "stage_context": "Chinese learner-facing assessment output",
+            "question_context": "Why must transport question ids stay stable?",
+            "answer_text": "They must stay stable across generation and submit.",
+        }
+    )
+
+    assert "Write core_gaps, misconceptions, follow-up questions, learning recommendations, and warnings in Simplified Chinese." in prompt.system_prompt
+    assert "Keep code identifiers, module names, API paths, command snippets, and established technical terms unchanged." in prompt.system_prompt
