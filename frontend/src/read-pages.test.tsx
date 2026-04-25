@@ -695,6 +695,50 @@ test("QuestionSetPage renders loaded question set data and not the static placeh
   expect(screen.queryByText(/Question set: unknown-set/)).not.toBeInTheDocument();
 });
 
+test("QuestionSetPage regenerates questions from the training entry", async () => {
+  const refreshedQuestionSetView: QuestionSetViewDTO = {
+    ...questionSetView,
+    question_count: 1,
+    current_question_id: "q-new",
+    questions: [
+      {
+        question_id: "q-new",
+        question_level: "scenario",
+        prompt: "How would you test malformed Project Agent output?",
+        status: "ready",
+      },
+    ],
+  };
+  const client = createClient({
+    getQuestionSetView: vi.fn().mockResolvedValueOnce(questionSetView).mockResolvedValueOnce(refreshedQuestionSetView),
+  });
+
+  renderWithClient(
+    <QuestionSetPage />,
+    client,
+    "/projects/proj-1/stages/stage-1/questions/set-1",
+  );
+
+  await screen.findByRole("heading", { name: "题目训练" });
+  fireEvent.click(screen.getByRole("button", { name: "让 Project Agent 出一组新题" }));
+
+  await waitFor(() =>
+    expect(client.generateQuestionSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: "proj-1",
+        stage_id: "stage-1",
+        source_page: "question_set",
+        stage_label: "Validation stage",
+        stage_goal: "Confirm boundary handling",
+        question_strategy: "full_depth",
+        max_questions: 4,
+      }),
+    ),
+  );
+  expect(await screen.findByText("已生成 1 道题，并刷新题目列表。")).toBeInTheDocument();
+  expect(screen.getByText("How would you test malformed Project Agent output?")).toBeInTheDocument();
+});
+
 test("QuestionPage renders loaded question data and not the static placeholder", async () => {
   renderWithClient(
     <QuestionPage />,

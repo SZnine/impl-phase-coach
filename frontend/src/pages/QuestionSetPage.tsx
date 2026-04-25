@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { useApiClient, type QuestionSetViewDTO } from "../lib/api";
+import { useApiClient, type GenerateQuestionSetResponseDTO, type QuestionSetViewDTO, type StageViewDTO } from "../lib/api";
 
 type QuestionSetLoadState =
-  | { status: "loading"; data: null; error: null }
-  | { status: "error"; data: null; error: string }
-  | { status: "ready"; data: QuestionSetViewDTO; error: null };
+  | { status: "loading"; data: null; stage: null; error: null }
+  | { status: "error"; data: null; stage: null; error: string }
+  | { status: "ready"; data: QuestionSetViewDTO; stage: StageViewDTO; error: null };
 
 type QuestionSummary = QuestionSetViewDTO["questions"][number];
 
@@ -17,7 +17,10 @@ export function QuestionSetPage() {
     questionSetId = "unknown-set",
   } = useParams();
   const client = useApiClient();
-  const [state, setState] = useState<QuestionSetLoadState>({ status: "loading", data: null, error: null });
+  const [state, setState] = useState<QuestionSetLoadState>({ status: "loading", data: null, stage: null, error: null });
+  const [generationState, setGenerationState] = useState<"idle" | "generating">("idle");
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationResult, setGenerationResult] = useState<GenerateQuestionSetResponseDTO | null>(null);
   const entryQuestion =
     state.status === "ready"
       ? state.data.questions.find((question) => question.question_id === state.data.current_question_id) ??
@@ -30,13 +33,15 @@ export function QuestionSetPage() {
 
   useEffect(() => {
     let active = true;
-    setState({ status: "loading", data: null, error: null });
+    setState({ status: "loading", data: null, stage: null, error: null });
+    setGenerationState("idle");
+    setGenerationError(null);
+    setGenerationResult(null);
 
-    client
-      .getQuestionSetView(projectId, stageId, questionSetId)
-      .then((data) => {
+    Promise.all([client.getQuestionSetView(projectId, stageId, questionSetId), client.getStageView(projectId, stageId)])
+      .then(([data, stage]) => {
         if (active) {
-          setState({ status: "ready", data, error: null });
+          setState({ status: "ready", data, stage, error: null });
         }
       })
       .catch((error: unknown) => {
@@ -44,6 +49,7 @@ export function QuestionSetPage() {
           setState({
             status: "error",
             data: null,
+            stage: null,
             error: error instanceof Error ? error.message : "Unable to load question set view.",
           });
         }
@@ -53,6 +59,46 @@ export function QuestionSetPage() {
       active = false;
     };
   }, [client, projectId, stageId, questionSetId]);
+
+  async function handleGenerateQuestionSet() {
+    if (state.status !== "ready") {
+      return;
+    }
+
+    setGenerationState("generating");
+    setGenerationError(null);
+    setGenerationResult(null);
+
+    try {
+      const response = await client.generateQuestionSet({
+        request_id: makeRequestId(),
+        project_id: projectId,
+        stage_id: stageId,
+        source_page: "question_set",
+        actor_id: "local-user",
+        created_at: new Date().toISOString(),
+        stage_label: state.stage.stage_label,
+        stage_goal: state.stage.stage_goal,
+        stage_summary: `Generate a practice question set for ${state.stage.stage_label}.`,
+        stage_artifacts: ["question set read surface", "question detail read surface"],
+        stage_exit_criteria: ["questions can be opened, answered, assessed, and accumulated into knowledge"],
+        current_decisions: ["Question training is the primary user entry for the workbench."],
+        key_logic_points: ["generated checkpoints must refresh the question set read surface"],
+        known_weak_points: ["question quality may drift if project context is too generic"],
+        boundary_focus: ["Project Agent output", "generated question checkpoint", "answer assessment"],
+        question_strategy: "full_depth",
+        max_questions: 4,
+        source_refs: [`stage:${stageId}`, `question_set:${questionSetId}`],
+      });
+      const refreshedQuestionSet = await client.getQuestionSetView(projectId, stageId, questionSetId);
+      setGenerationResult(response);
+      setState({ status: "ready", data: refreshedQuestionSet, stage: state.stage, error: null });
+    } catch (error: unknown) {
+      setGenerationError(error instanceof Error ? error.message : "Unable to generate question set.");
+    } finally {
+      setGenerationState("idle");
+    }
+  }
 
   return (
     <section style={{ display: "grid", gap: "1rem" }}>
@@ -109,6 +155,24 @@ export function QuestionSetPage() {
                 </p>
               </div>
             ) : null}
+            <div style={{ marginTop: "1rem", display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+              <button
+                type="button"
+                disabled={generationState === "generating"}
+                onClick={handleGenerateQuestionSet}
+                style={secondaryButtonStyle}
+              >
+                {generationState === "generating" ? "正在出题..." : "让 Project Agent 出一组新题"}
+              </button>
+              {generationResult ? (
+                <span style={generationSuccessStyle}>已生成 {generationResult.questions.length} 道题，并刷新题目列表。</span>
+              ) : null}
+            </div>
+            {generationError ? (
+              <p style={{ margin: "0.75rem 0 0", color: "#b91c1c" }} role="alert">
+                {generationError}
+              </p>
+            ) : null}
           </article>
 
           <article style={panelStyle}>
@@ -140,6 +204,13 @@ export function QuestionSetPage() {
       )}
     </section>
   );
+}
+
+function makeRequestId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}`;
 }
 
 function getQuestionDisplayStatus(question: QuestionSummary, currentQuestionId: string | null) {
@@ -214,4 +285,17 @@ const buttonLinkStyle = {
   color: "#fff",
   fontWeight: 800,
   textDecoration: "none",
+} as const;
+const secondaryButtonStyle = {
+  border: "1px solid rgba(21, 128, 61, 0.35)",
+  borderRadius: "999px",
+  padding: "0.65rem 0.9rem",
+  background: "#fff",
+  color: "#166534",
+  fontWeight: 800,
+  cursor: "pointer",
+} as const;
+const generationSuccessStyle = {
+  color: "#15803d",
+  fontWeight: 800,
 } as const;
