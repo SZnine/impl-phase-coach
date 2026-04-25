@@ -248,6 +248,10 @@ export type GenerateQuestionSetRequestDTO = {
   stage_label: string;
   stage_goal: string;
   stage_summary: string;
+  learning_goal: string;
+  target_user_level: string;
+  question_mix: string[];
+  preferred_question_style: string;
   stage_artifacts: string[];
   stage_exit_criteria: string[];
   current_decisions: string[];

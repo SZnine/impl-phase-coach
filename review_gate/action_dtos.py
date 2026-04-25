@@ -92,6 +92,10 @@ class GenerateQuestionSetRequest(ActionRequestBase):
     stage_label: str = ""
     stage_goal: str = ""
     stage_summary: str = ""
+    learning_goal: str = ""
+    target_user_level: str = ""
+    question_mix: list[str] = field(default_factory=list)
+    preferred_question_style: str = ""
     stage_artifacts: list[str] = field(default_factory=list)
     stage_exit_criteria: list[str] = field(default_factory=list)
     current_decisions: list[str] = field(default_factory=list)

@@ -2,6 +2,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useApiClient, type GenerateQuestionSetResponseDTO, type StageViewDTO } from "../lib/api";
+import { defaultQuestionGenerationLearningContext } from "../lib/questionGenerationDefaults";
 
 type StageLoadState =
   | { status: "loading"; data: null; error: null }
@@ -69,6 +70,7 @@ export function StagePage() {
         stage_label: state.data.stage_label,
         stage_goal: state.data.stage_goal,
         stage_summary: `Generate a live question set for ${state.data.stage_label}.`,
+        ...defaultQuestionGenerationLearningContext,
         stage_artifacts: ["question set read surface", "question detail read surface"],
         stage_exit_criteria: ["generated questions can be opened and answered"],
         current_decisions: ["Project Agent question generation is available through an HTTP action."],

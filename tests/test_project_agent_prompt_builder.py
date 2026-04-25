@@ -78,6 +78,31 @@ def test_project_agent_prompt_builder_includes_bad_output_examples_to_avoid() ->
     assert "A set with no fundamentals question and no migration/failure-mode question." in prompt.user_prompt
 
 
+def test_project_agent_prompt_builder_carries_learning_context_into_user_prompt() -> None:
+    builder = ProjectAgentPromptBuilder()
+
+    prompt = builder.build(
+        {
+            "project_id": "proj-1",
+            "stage_id": "stage-4",
+            "stage_label": "live-workflow-close-loop",
+            "stage_goal": "make the workbench usable for real question training",
+            "learning_goal": "practice realistic backend interview questions tied to the current project",
+            "target_user_level": "intermediate",
+            "question_mix": ["project implementation", "interview fundamentals", "mistake diagnosis"],
+            "preferred_question_style": "concrete, human-readable, close to a real study app",
+            "max_questions": 4,
+        }
+    )
+
+    assert "Learning goal: practice realistic backend interview questions tied to the current project" in prompt.user_prompt
+    assert "Target user level: intermediate" in prompt.user_prompt
+    assert "Question mix: project implementation, interview fundamentals, mistake diagnosis" in prompt.user_prompt
+    assert "Preferred question style: concrete, human-readable, close to a real study app" in prompt.user_prompt
+    assert "- Prefer direct, answerable questions over vague architecture discussion." in prompt.user_prompt
+    assert "- Include at least one question that exposes a likely user misconception or wrong mental model." in prompt.user_prompt
+
+
 def test_project_agent_prompt_builder_exposes_stable_output_contract() -> None:
     builder = ProjectAgentPromptBuilder()
 

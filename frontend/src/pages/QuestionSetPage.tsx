@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useApiClient, type GenerateQuestionSetResponseDTO, type QuestionSetViewDTO, type StageViewDTO } from "../lib/api";
+import { defaultQuestionGenerationLearningContext } from "../lib/questionGenerationDefaults";
 
 type QuestionSetLoadState =
   | { status: "loading"; data: null; stage: null; error: null }
@@ -80,6 +81,7 @@ export function QuestionSetPage() {
         stage_label: state.stage.stage_label,
         stage_goal: state.stage.stage_goal,
         stage_summary: `Generate a practice question set for ${state.stage.stage_label}.`,
+        ...defaultQuestionGenerationLearningContext,
         stage_artifacts: ["question set read surface", "question detail read surface"],
         stage_exit_criteria: ["questions can be opened, answered, assessed, and accumulated into knowledge"],
         current_decisions: ["Question training is the primary user entry for the workbench."],
