@@ -4,6 +4,26 @@ from review_gate.full_live_workflow_smoke import (
     format_full_live_workflow_smoke_report,
     resolve_first_generated_transport_question_id,
 )
+from scripts.run_full_live_workflow_smoke import build_generation_request
+
+
+def test_full_live_workflow_generation_request_carries_learning_context() -> None:
+    request = build_generation_request(
+        request_id="req-full-live-qgen-test",
+        created_at="2026-04-25T00:00:00Z",
+        max_questions=4,
+    )
+
+    assert request["source_page"] == "full_live_workflow_smoke"
+    assert request["learning_goal"] == "practice realistic project questions, interview fundamentals, and misconception diagnosis"
+    assert request["target_user_level"] == "intermediate"
+    assert request["question_mix"] == [
+        "project implementation",
+        "interview fundamentals",
+        "mistake diagnosis",
+        "failure scenario",
+    ]
+    assert request["preferred_question_style"] == "concrete study-app question list with direct prompts and reviewable answers"
 
 
 def test_resolve_first_generated_transport_question_id_uses_question_set_prefix() -> None:

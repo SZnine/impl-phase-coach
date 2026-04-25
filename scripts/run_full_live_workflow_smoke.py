@@ -50,45 +50,11 @@ def main() -> int:
     created_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     generation_response = client.post(
         "/api/actions/generate-question-set",
-        json={
-            "request_id": f"req-full-live-qgen-{timestamp}",
-            "project_id": "proj-1",
-            "stage_id": "stage-1",
-            "source_page": "full_live_workflow_smoke",
-            "actor_id": "local-user",
-            "created_at": created_at,
-            "stage_label": "module-interface-boundary",
-            "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
-            "stage_summary": "Run a minimum live workflow from project-agent questions to graph read surface.",
-            "stage_artifacts": ["HTTP generation action", "generated question checkpoint", "graph revision"],
-            "stage_exit_criteria": ["generated question submitted", "graph-main selected cluster exists"],
-            "current_decisions": [
-                "Question generation is exposed as an HTTP action.",
-                "Submit uses generated question context when a generated chain exists.",
-                "Graph read APIs consume the active submit-side graph revision.",
-            ],
-            "key_logic_points": [
-                "transport question ids remain stable across generation and submit",
-                "checkpoint records carry prompt, intent, expected signals, and source context",
-                "facts and signals project into graph nodes and optional support relations",
-            ],
-            "known_weak_points": [
-                "provider output may omit relation-supporting tags",
-                "live smoke is observational and must not gate default pytest",
-            ],
-            "boundary_focus": [
-                "Project Agent output contract",
-                "generated question checkpoint",
-                "Evaluator Agent assessment contract",
-                "Facts to Graph projection",
-            ],
-            "question_strategy": "full_depth",
-            "max_questions": args.max_questions,
-            "source_refs": [
-                "docs/superpowers/specs/2026-04-09-terminal-business-architecture-design.md",
-                "docs/superpowers/specs/2026-04-21-full-live-workflow-smoke-design.md",
-            ],
-        },
+        json=build_generation_request(
+            request_id=f"req-full-live-qgen-{timestamp}",
+            created_at=created_at,
+            max_questions=args.max_questions,
+        ),
     ).json()
     selected_question_id = resolve_first_generated_transport_question_id(
         generation_response=generation_response,
@@ -160,6 +126,62 @@ def main() -> int:
     print(f"\nSaved JSON artifact to: {json_path}")
     print(f"Saved Markdown report to: {md_path}")
     return 1 if issues else 0
+
+
+def build_generation_request(
+    *,
+    request_id: str,
+    created_at: str,
+    max_questions: int,
+) -> dict[str, object]:
+    return {
+        "request_id": request_id,
+        "project_id": "proj-1",
+        "stage_id": "stage-1",
+        "source_page": "full_live_workflow_smoke",
+        "actor_id": "local-user",
+        "created_at": created_at,
+        "stage_label": "module-interface-boundary",
+        "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+        "stage_summary": "Run a minimum live workflow from project-agent questions to graph read surface.",
+        "learning_goal": "practice realistic project questions, interview fundamentals, and misconception diagnosis",
+        "target_user_level": "intermediate",
+        "question_mix": [
+            "project implementation",
+            "interview fundamentals",
+            "mistake diagnosis",
+            "failure scenario",
+        ],
+        "preferred_question_style": "concrete study-app question list with direct prompts and reviewable answers",
+        "stage_artifacts": ["HTTP generation action", "generated question checkpoint", "graph revision"],
+        "stage_exit_criteria": ["generated question submitted", "graph-main selected cluster exists"],
+        "current_decisions": [
+            "Question generation is exposed as an HTTP action.",
+            "Submit uses generated question context when a generated chain exists.",
+            "Graph read APIs consume the active submit-side graph revision.",
+        ],
+        "key_logic_points": [
+            "transport question ids remain stable across generation and submit",
+            "checkpoint records carry prompt, intent, expected signals, and source context",
+            "facts and signals project into graph nodes and optional support relations",
+        ],
+        "known_weak_points": [
+            "provider output may omit relation-supporting tags",
+            "live smoke is observational and must not gate default pytest",
+        ],
+        "boundary_focus": [
+            "Project Agent output contract",
+            "generated question checkpoint",
+            "Evaluator Agent assessment contract",
+            "Facts to Graph projection",
+        ],
+        "question_strategy": "full_depth",
+        "max_questions": max_questions,
+        "source_refs": [
+            "docs/superpowers/specs/2026-04-09-terminal-business-architecture-design.md",
+            "docs/superpowers/specs/2026-04-21-full-live-workflow-smoke-design.md",
+        ],
+    }
 
 
 def _parse_args() -> argparse.Namespace:
