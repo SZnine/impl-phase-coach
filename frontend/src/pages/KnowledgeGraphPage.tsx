@@ -68,9 +68,9 @@ export function KnowledgeGraphPage() {
   return (
     <section style={{ display: "grid", gap: "1rem" }}>
       <div>
-        <h1 style={{ margin: 0 }}>Knowledge Graph</h1>
+        <h1 style={{ margin: 0 }}>知识星图</h1>
         <p style={{ margin: "0.5rem 0 0", color: "#475569" }}>
-          Durable knowledge nodes extracted from completed review assessments.
+          从本阶段答题评析沉淀出的知识点、薄弱点和它们之间的关系。
         </p>
       </div>
 
@@ -86,7 +86,7 @@ export function KnowledgeGraphPage() {
       ) : (
         <div style={{ display: "grid", gap: "1rem" }}>
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Selected cluster</h2>
+            <h2 style={sectionHeadingStyle}>当前聚焦</h2>
             {state.data.selected_cluster ? (
               <>
                 <p style={{ margin: 0, fontWeight: 700 }}>{state.data.selected_cluster.title}</p>
@@ -95,34 +95,34 @@ export function KnowledgeGraphPage() {
                 </p>
               </>
             ) : (
-              <p style={{ margin: 0, color: "#64748b" }}>No cluster selected.</p>
+              <p style={{ margin: 0, color: "#64748b" }}>还没有选中的知识簇。</p>
             )}
           </article>
 
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Map preview</h2>
+            <h2 style={sectionHeadingStyle}>星图预览</h2>
             {state.data.nodes.length === 0 ? (
-              <p style={{ margin: 0, color: "#64748b" }}>No visible nodes for the current cluster.</p>
+              <p style={{ margin: 0, color: "#64748b" }}>当前知识簇还没有可见知识点。</p>
             ) : (
               <div style={{ display: "grid", gap: "1rem" }}>
                 <div style={overviewGridStyle}>
                   <div style={overviewCardStyle}>
-                    <p style={subtleLabelStyle}>Visible nodes</p>
+                    <p style={subtleLabelStyle}>可见知识点</p>
                     <p style={overviewValueStyle}>{state.data.nodes.length}</p>
                   </div>
                   <div style={overviewCardStyle}>
-                    <p style={subtleLabelStyle}>Visible relations</p>
+                    <p style={subtleLabelStyle}>可见关系</p>
                     <p style={overviewValueStyle}>{visibleRelations.length}</p>
                   </div>
                   <div style={overviewCardStyle}>
-                    <p style={subtleLabelStyle}>Relation types</p>
+                    <p style={subtleLabelStyle}>关系类型</p>
                     <p style={overviewValueStyle}>{relationGroups.length}</p>
                   </div>
                 </div>
 
                 <div style={previewColumnsStyle}>
                   <div style={centerNodePanelStyle}>
-                    <p style={subtleLabelStyle}>Center node</p>
+                    <p style={subtleLabelStyle}>中心知识点</p>
                     {getCenterNode(state.data) ? (
                       <>
                         <div style={nodePillStyle}>{getCenterNode(state.data)?.label}</div>
@@ -134,14 +134,14 @@ export function KnowledgeGraphPage() {
                         </p>
                       </>
                     ) : (
-                      <div style={nodePillStyle}>Unknown node</div>
+                      <div style={nodePillStyle}>未知知识点</div>
                     )}
                   </div>
                   <div>
-                    <p style={subtleLabelStyle}>Related nodes</p>
+                    <p style={subtleLabelStyle}>相关知识点</p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
                       {getNeighborNodes(state.data).length === 0 ? (
-                        <span style={emptyHintStyle}>No neighboring nodes in this cluster.</span>
+                        <span style={emptyHintStyle}>这个知识簇暂时没有相邻知识点。</span>
                       ) : (
                         getNeighborNodes(state.data).map((node) => (
                           <div
@@ -160,7 +160,7 @@ export function KnowledgeGraphPage() {
                 </div>
 
                 <div style={legendPanelStyle}>
-                  <p style={subtleLabelStyle}>Relation guide</p>
+                  <p style={subtleLabelStyle}>关系筛选</p>
                   <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                     <button
                       type="button"
@@ -171,10 +171,10 @@ export function KnowledgeGraphPage() {
                         ...(relationTypeFilter === "all" ? filterButtonActiveStyle : null),
                       }}
                     >
-                      All
+                      全部
                     </button>
                     {relationGroups.length === 0 ? (
-                      <span style={emptyHintStyle}>No relation types visible in this cluster.</span>
+                      <span style={emptyHintStyle}>当前知识簇没有可筛选的关系类型。</span>
                     ) : (
                       relationGroups.map(([relationType, relations]) => (
                         <button
@@ -196,9 +196,9 @@ export function KnowledgeGraphPage() {
                 </div>
 
                 <div>
-                  <p style={subtleLabelStyle}>Connections by type</p>
+                  <p style={subtleLabelStyle}>关系明细</p>
                   {visibleRelations.length === 0 ? (
-                    <span style={emptyHintStyle}>No visible relations in this cluster.</span>
+                    <span style={emptyHintStyle}>当前知识簇还没有可见关系。</span>
                   ) : (
                     <div style={{ display: "grid", gap: "0.5rem" }}>
                       {relationGroups.map(([relationType, relations]) => (

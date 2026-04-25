@@ -573,16 +573,31 @@ test("KnowledgeGraphPage renders graph main view instead of the legacy graph she
   renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
 
   expect(screen.getByText("Loading knowledge graph view...")).toBeInTheDocument();
-  expect(await screen.findByRole("heading", { name: "Knowledge Graph" })).toBeInTheDocument();
-  expect(screen.getByText("Selected cluster")).toBeInTheDocument();
-  expect(screen.getByText("Map preview")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "知识星图" })).toBeInTheDocument();
+  expect(screen.getByText("当前聚焦")).toBeInTheDocument();
+  expect(screen.getByText("星图预览")).toBeInTheDocument();
   expect(screen.getByText("State boundary hotspot")).toBeInTheDocument();
-  expect(screen.getByText("Visible nodes")).toBeInTheDocument();
-  expect(screen.getByText("Visible relations")).toBeInTheDocument();
-  expect(screen.getByText("Relation guide")).toBeInTheDocument();
+  expect(screen.getByText("可见知识点")).toBeInTheDocument();
+  expect(screen.getByText("可见关系")).toBeInTheDocument();
+  expect(screen.getByText("关系筛选")).toBeInTheDocument();
   expect(screen.getAllByText("State and return value separation").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Boundary confusion").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Mastery: partial")).toHaveLength(2);
+});
+
+test("KnowledgeGraphPage presents the graph as a Chinese learning surface", async () => {
+  renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
+
+  expect(await screen.findByRole("heading", { name: "知识星图" })).toBeInTheDocument();
+  expect(screen.getByText("从本阶段答题评析沉淀出的知识点、薄弱点和它们之间的关系。")).toBeInTheDocument();
+  expect(screen.getByText("当前聚焦")).toBeInTheDocument();
+  expect(screen.getByText("星图预览")).toBeInTheDocument();
+  expect(screen.getByText("可见知识点")).toBeInTheDocument();
+  expect(screen.getByText("可见关系")).toBeInTheDocument();
+  expect(screen.getByText("关系类型")).toBeInTheDocument();
+  expect(screen.getByText("中心知识点")).toBeInTheDocument();
+  expect(screen.getByText("相关知识点")).toBeInTheDocument();
+  expect(screen.getByText("关系筛选")).toBeInTheDocument();
 });
 
 test("KnowledgeGraphPage scopes graph request from project and stage query params", async () => {
@@ -590,7 +605,7 @@ test("KnowledgeGraphPage scopes graph request from project and stage query param
 
   renderWithClient(<KnowledgeGraphPage />, client, "/knowledge/graph?project=proj-1&stage=stage-1");
 
-  await screen.findByRole("heading", { name: "Knowledge Graph" });
+  await screen.findByRole("heading", { name: "知识星图" });
 
   expect(client.getKnowledgeGraphMainView).toHaveBeenCalledWith("proj-1", "stage-1", undefined);
 });
@@ -599,14 +614,14 @@ test("KnowledgeGraphPage renders loaded graph nodes and not a shell placeholder"
   renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
 
   expect(screen.getByText("Loading knowledge graph view...")).toBeInTheDocument();
-  expect(await screen.findByRole("heading", { name: "Knowledge Graph" })).toBeInTheDocument();
-  expect(screen.getByText("Selected cluster")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "知识星图" })).toBeInTheDocument();
+  expect(screen.getByText("当前聚焦")).toBeInTheDocument();
   expect(screen.getByText("State boundary hotspot")).toBeInTheDocument();
   expect(screen.getAllByText("State and return value separation").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Boundary confusion").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Derived from partial assessment in stage-1.").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByText("Evidence: 1")).toHaveLength(2);
-  expect(screen.getByText("Connections by type")).toBeInTheDocument();
+  expect(screen.getByText("关系明细")).toBeInTheDocument();
   expect(screen.getAllByText("Causes Mistake (1)").length).toBeGreaterThanOrEqual(2);
   expect(screen.getAllByRole("link", { name: "State and return value separation" })[0]).toHaveAttribute("href", "#node-node-1");
   expect(screen.getAllByRole("link", { name: "Boundary confusion" })[0]).toHaveAttribute("href", "#node-node-2");
@@ -619,7 +634,7 @@ test("KnowledgeGraphPage filters visible relations by type", async () => {
 
   renderWithClient(<KnowledgeGraphPage />, client, "/knowledge/graph");
 
-  await screen.findByRole("heading", { name: "Knowledge Graph" });
+  await screen.findByRole("heading", { name: "知识星图" });
   fireEvent.click(screen.getByRole("button", { name: "Supports" }));
 
   expect(screen.getByRole("button", { name: "Supports" })).toHaveAttribute("aria-pressed", "true");
@@ -630,7 +645,7 @@ test("KnowledgeGraphPage filters visible relations by type", async () => {
 test("KnowledgeGraphPage highlights related nodes when a relation is focused", async () => {
   renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
 
-  await screen.findByRole("heading", { name: "Knowledge Graph" });
+  await screen.findByRole("heading", { name: "知识星图" });
   fireEvent.click(screen.getByRole("button", { name: "relation-1" }));
 
   expect(screen.getByRole("button", { name: "relation-1" })).toHaveAttribute("aria-pressed", "true");
@@ -641,7 +656,7 @@ test("KnowledgeGraphPage highlights related nodes when a relation is focused", a
 test("KnowledgeGraphPage highlights related relations when a node is focused", async () => {
   renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
 
-  await screen.findByRole("heading", { name: "Knowledge Graph" });
+  await screen.findByRole("heading", { name: "知识星图" });
   fireEvent.click(screen.getByRole("button", { name: "node-node-1" }));
 
   expect(screen.getByRole("button", { name: "node-node-1" })).toHaveAttribute("aria-pressed", "true");
