@@ -30,6 +30,7 @@ class ProjectAgentPromptBuilder:
         stage_summary = str(request.get("stage_summary", ""))
         learning_goal = str(request.get("learning_goal", ""))
         target_user_level = str(request.get("target_user_level", ""))
+        preferred_language = str(request.get("preferred_language", ""))
         question_mix = self._coerce_str_list(request.get("question_mix"))
         preferred_question_style = str(request.get("preferred_question_style", ""))
         max_questions = int(request.get("max_questions", 3))
@@ -55,6 +56,7 @@ class ProjectAgentPromptBuilder:
             f"Stage summary: {stage_summary}",
             f"Learning goal: {learning_goal}",
             f"Target user level: {target_user_level}",
+            f"Preferred language: {preferred_language}",
             f"Question mix: {', '.join(question_mix) if question_mix else '(none)'}",
             f"Preferred question style: {preferred_question_style}",
             f"Max questions: {max_questions}",
@@ -69,6 +71,8 @@ class ProjectAgentPromptBuilder:
             "- Include at least one higher-level trade-off or failure-mode question when max_questions >= 4.",
             "- Use at least one concrete module name, persistence concern, migration boundary, or compatibility risk from the current project context when possible.",
             "- Make at least one question something a real backend/system-design interviewer could directly ask in an interview.",
+            "- Write question prompts, intents, and visible learner-facing text in Simplified Chinese.",
+            "- Keep code identifiers, module names, API paths, and command snippets unchanged.",
             "- Prefer direct, answerable questions over vague architecture discussion.",
             "- Include at least one question that exposes a likely user misconception or wrong mental model.",
             "- Avoid letting every question sit at the same layer of abstraction.",

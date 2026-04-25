@@ -94,6 +94,7 @@ class GenerateQuestionSetRequest(ActionRequestBase):
     stage_summary: str = ""
     learning_goal: str = ""
     target_user_level: str = ""
+    preferred_language: str = ""
     question_mix: list[str] = field(default_factory=list)
     preferred_question_style: str = ""
     stage_artifacts: list[str] = field(default_factory=list)

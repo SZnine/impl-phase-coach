@@ -250,6 +250,7 @@ export type GenerateQuestionSetRequestDTO = {
   stage_summary: string;
   learning_goal: string;
   target_user_level: string;
+  preferred_language: string;
   question_mix: string[];
   preferred_question_style: string;
   stage_artifacts: string[];

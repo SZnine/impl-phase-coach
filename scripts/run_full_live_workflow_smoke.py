@@ -146,6 +146,7 @@ def build_generation_request(
         "stage_summary": "Run a minimum live workflow from project-agent questions to graph read surface.",
         "learning_goal": "practice realistic project questions, interview fundamentals, and misconception diagnosis",
         "target_user_level": "intermediate",
+        "preferred_language": "zh-CN",
         "question_mix": [
             "project implementation",
             "interview fundamentals",

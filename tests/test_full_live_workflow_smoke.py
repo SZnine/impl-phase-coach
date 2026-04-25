@@ -29,6 +29,7 @@ def test_full_live_workflow_generation_request_carries_learning_context() -> Non
     assert request["source_page"] == "full_live_workflow_smoke"
     assert request["learning_goal"] == "practice realistic project questions, interview fundamentals, and misconception diagnosis"
     assert request["target_user_level"] == "intermediate"
+    assert request["preferred_language"] == "zh-CN"
     assert request["question_mix"] == [
         "project implementation",
         "interview fundamentals",

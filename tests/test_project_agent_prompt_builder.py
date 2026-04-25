@@ -89,6 +89,7 @@ def test_project_agent_prompt_builder_carries_learning_context_into_user_prompt(
             "stage_goal": "make the workbench usable for real question training",
             "learning_goal": "practice realistic backend interview questions tied to the current project",
             "target_user_level": "intermediate",
+            "preferred_language": "zh-CN",
             "question_mix": ["project implementation", "interview fundamentals", "mistake diagnosis"],
             "preferred_question_style": "concrete, human-readable, close to a real study app",
             "max_questions": 4,
@@ -97,8 +98,11 @@ def test_project_agent_prompt_builder_carries_learning_context_into_user_prompt(
 
     assert "Learning goal: practice realistic backend interview questions tied to the current project" in prompt.user_prompt
     assert "Target user level: intermediate" in prompt.user_prompt
+    assert "Preferred language: zh-CN" in prompt.user_prompt
     assert "Question mix: project implementation, interview fundamentals, mistake diagnosis" in prompt.user_prompt
     assert "Preferred question style: concrete, human-readable, close to a real study app" in prompt.user_prompt
+    assert "Write question prompts, intents, and visible learner-facing text in Simplified Chinese." in prompt.user_prompt
+    assert "Keep code identifiers, module names, API paths, and command snippets unchanged." in prompt.user_prompt
     assert "- Prefer direct, answerable questions over vague architecture discussion." in prompt.user_prompt
     assert "- Include at least one question that exposes a likely user misconception or wrong mental model." in prompt.user_prompt
 
