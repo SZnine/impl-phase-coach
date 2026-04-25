@@ -585,6 +585,16 @@ test("KnowledgeGraphPage renders graph main view instead of the legacy graph she
   expect(screen.getAllByText("Mastery: partial")).toHaveLength(2);
 });
 
+test("KnowledgeGraphPage scopes graph request from project and stage query params", async () => {
+  const client = createClient();
+
+  renderWithClient(<KnowledgeGraphPage />, client, "/knowledge/graph?project=proj-1&stage=stage-1");
+
+  await screen.findByRole("heading", { name: "Knowledge Graph" });
+
+  expect(client.getKnowledgeGraphMainView).toHaveBeenCalledWith("proj-1", "stage-1", undefined);
+});
+
 test("KnowledgeGraphPage renders loaded graph nodes and not a shell placeholder", async () => {
   renderWithClient(<KnowledgeGraphPage />, createClient(), "/knowledge/graph");
 
@@ -817,6 +827,10 @@ test("QuestionPage submits an answer and refreshes the stage summary", async () 
   expect(screen.getByRole("link", { name: "返回题集" })).toHaveAttribute(
     "href",
     "/projects/proj-1/stages/stage-1/questions/set-1",
+  );
+  expect(screen.getByRole("link", { name: "查看知识星图" })).toHaveAttribute(
+    "href",
+    "/knowledge/graph?project=proj-1&stage=stage-1",
   );
   expect(screen.getByRole("link", { name: "进入下一题" })).toHaveAttribute(
     "href",

@@ -24,9 +24,11 @@ export function KnowledgeGraphPage() {
     setSelectedNodeId(null);
     setSelectedRelationId(null);
     const clusterId = searchParams.get("cluster") ?? undefined;
+    const projectId = searchParams.get("project") ?? undefined;
+    const stageId = searchParams.get("stage") ?? undefined;
 
     client
-      .getKnowledgeGraphMainView(undefined, undefined, clusterId)
+      .getKnowledgeGraphMainView(projectId, stageId, clusterId)
       .then((data) => {
         if (active) {
           setState({ status: "ready", data, error: null });

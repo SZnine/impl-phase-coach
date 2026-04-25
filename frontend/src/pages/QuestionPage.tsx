@@ -272,6 +272,7 @@ function AssessmentReviewPanel({
   nextQuestionId: string | null;
 }) {
   const questionSetHref = `/projects/${projectId}/stages/${stageId}/questions/${questionSetId}`;
+  const knowledgeGraphHref = `/knowledge/graph?project=${encodeURIComponent(projectId)}&stage=${encodeURIComponent(stageId)}`;
   const nextQuestionHref = nextQuestionId ? `${questionSetHref}/${nextQuestionId}` : null;
 
   return (
@@ -314,6 +315,9 @@ function AssessmentReviewPanel({
       <nav aria-label="Assessment follow-up actions" style={reviewNavStyle}>
         <Link to={questionSetHref} style={secondaryLinkStyle}>
           返回题集
+        </Link>
+        <Link to={knowledgeGraphHref} style={secondaryLinkStyle}>
+          查看知识星图
         </Link>
         {nextQuestionHref ? (
           <Link to={nextQuestionHref} style={primaryLinkStyle}>
