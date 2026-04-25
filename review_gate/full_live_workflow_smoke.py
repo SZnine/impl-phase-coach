@@ -118,6 +118,7 @@ def format_full_live_workflow_smoke_report(artifact: dict[str, Any]) -> str:
         "## Generation",
         f"generated_question_count: {generated_question_count}",
         f"selected_question_id: {artifact.get('selected_question_id', '')}",
+        *_format_generated_question_lines(questions),
         "",
         "## Question Set Progress",
         f"answered_question_count: {_answered_question_count(question_set_view)}",
@@ -125,6 +126,7 @@ def format_full_live_workflow_smoke_report(artifact: dict[str, Any]) -> str:
         "",
         "## Assessment Review",
         f"review_title: {assessment_review.get('review_title', '') if isinstance(assessment_review, dict) else ''}",
+        f"review_summary: {assessment_review.get('review_summary', '') if isinstance(assessment_review, dict) else ''}",
         f"verdict_label: {assessment_review.get('verdict_label', '') if isinstance(assessment_review, dict) else ''}",
         f"knowledge_update_count: {len(knowledge_updates) if isinstance(knowledge_updates, list) else 0}",
         "",
@@ -138,6 +140,24 @@ def format_full_live_workflow_smoke_report(artifact: dict[str, Any]) -> str:
         f"focus_reason_codes: {selected_cluster.get('focus_reason_codes', [])}",
     ]
     return "\n".join(lines)
+
+
+def _format_generated_question_lines(questions: object) -> list[str]:
+    if not isinstance(questions, list) or not questions:
+        return []
+
+    lines = ["", "generated_questions:"]
+    for index, question in enumerate(questions, start=1):
+        if not isinstance(question, dict):
+            continue
+        question_id = str(question.get("question_id") or question.get("id") or f"q-{index}")
+        question_level = str(question.get("question_level") or question.get("difficulty") or "unknown")
+        prompt = str(question.get("prompt") or "").strip()
+        intent = str(question.get("intent") or "").strip()
+        lines.append(f"- {question_id} [{question_level}]: {prompt}")
+        if intent:
+            lines.append(f"  intent: {intent}")
+    return lines
 
 
 def _coerce_int(value: object) -> int:

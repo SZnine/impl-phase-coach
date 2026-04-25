@@ -169,6 +169,48 @@ def test_format_full_live_workflow_smoke_report_surfaces_generation_and_graph_co
     assert "issues: none" in report
 
 
+def test_format_full_live_workflow_smoke_report_surfaces_question_and_review_quality() -> None:
+    report = format_full_live_workflow_smoke_report(
+        {
+            "project_model": "gpt-5.4-mini",
+            "evaluator_model": "gpt-5.4-mini",
+            "selected_question_id": "set-1-q-1",
+            "issues": [],
+            "generation_response": {
+                "questions": [
+                    {
+                        "question_id": "q-1",
+                        "question_level": "why",
+                        "prompt": "Why should generated questions preserve transport ids?",
+                        "intent": "Check identity boundary reasoning.",
+                    },
+                    {
+                        "question_id": "q-2",
+                        "question_level": "core",
+                        "prompt": "What should the API return when support relations cannot be formed?",
+                        "intent": "Check migration fallback design.",
+                    },
+                ]
+            },
+            "assessment_review": {
+                "has_assessment": True,
+                "review_title": "Needs clearer boundary reasoning",
+                "review_summary": "The answer identifies the direction but misses malformed provider output handling.",
+                "knowledge_updates": [{"title": "normalizer failure scenario"}],
+            },
+            "question_set_view": {"questions": [{"question_id": "set-1-q-1", "status": "answered"}]},
+            "graph_revision": {"revision": {"node_count": 1, "relation_count": 0}},
+            "graph_main": {"selected_cluster": {"center_node_id": "kn-1", "neighbor_node_ids": [], "focus_reason_codes": []}},
+        }
+    )
+
+    assert "- q-1 [why]: Why should generated questions preserve transport ids?" in report
+    assert "  intent: Check identity boundary reasoning." in report
+    assert "- q-2 [core]: What should the API return when support relations cannot be formed?" in report
+    assert "  intent: Check migration fallback design." in report
+    assert "review_summary: The answer identifies the direction but misses malformed provider output handling." in report
+
+
 def test_classify_full_live_workflow_smoke_issues_requires_assessment_review() -> None:
     issues = classify_full_live_workflow_smoke_issues(
         generation_response={"questions": [{"question_id": "q-1"}]},
