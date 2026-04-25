@@ -36,6 +36,8 @@ def classify_full_live_workflow_smoke_issues(
     questions = generation_response.get("questions")
     if not isinstance(questions, list) or not questions:
         issues.append("missing_generated_questions")
+    elif not _has_readable_generated_question_prompt(questions):
+        issues.append("missing_readable_generated_question_prompt")
     if submit_response.get("success") is not True:
         issues.append("submit_failed")
     refresh_targets = submit_response.get("refresh_targets")
@@ -43,6 +45,8 @@ def classify_full_live_workflow_smoke_issues(
         issues.append("missing_question_set_refresh_target")
     if assessment_review.get("has_assessment") is not True:
         issues.append("missing_assessment_review")
+    elif not _is_readable_text(assessment_review.get("review_summary")):
+        issues.append("missing_readable_assessment_review_summary")
     if _answered_question_count(question_set_view) < 1:
         issues.append("missing_answered_question_progress")
     if graph_revision.get("has_active_revision") is not True:
@@ -165,6 +169,17 @@ def _coerce_int(value: object) -> int:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0
+
+
+def _has_readable_generated_question_prompt(questions: list[object]) -> bool:
+    return any(
+        isinstance(question, dict) and _is_readable_text(question.get("prompt"))
+        for question in questions
+    )
+
+
+def _is_readable_text(value: object) -> bool:
+    return isinstance(value, str) and len(value.strip()) >= 24
 
 
 def _answered_question_count(question_set_view: object) -> int:

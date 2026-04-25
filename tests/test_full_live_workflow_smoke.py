@@ -7,6 +7,18 @@ from review_gate.full_live_workflow_smoke import (
 from scripts.run_full_live_workflow_smoke import build_generation_request
 
 
+GOOD_GENERATED_QUESTION = {
+    "question_id": "q-1",
+    "prompt": "Why should generated questions preserve stable transport identity?",
+}
+
+GOOD_ASSESSMENT_REVIEW = {
+    "has_assessment": True,
+    "review_title": "方向正确，但还需要补齐关键缺口",
+    "review_summary": "The answer is partially correct but misses the stable boundary contract.",
+}
+
+
 def test_full_live_workflow_generation_request_carries_learning_context() -> None:
     request = build_generation_request(
         request_id="req-full-live-qgen-test",
@@ -44,9 +56,9 @@ def test_resolve_first_generated_transport_question_id_uses_question_set_prefix(
 
 def test_classify_full_live_workflow_smoke_issues_accepts_minimal_success() -> None:
     issues = classify_full_live_workflow_smoke_issues(
-        generation_response={"questions": [{"question_id": "q-1"}]},
+        generation_response={"questions": [GOOD_GENERATED_QUESTION]},
         submit_response={"success": True},
-        assessment_review={"has_assessment": True, "review_title": "方向正确，但还需要补齐关键缺口"},
+        assessment_review=GOOD_ASSESSMENT_REVIEW,
         question_set_view={
             "question_count": 1,
             "current_question_id": "set-1-q-1",
@@ -68,11 +80,73 @@ def test_classify_full_live_workflow_smoke_issues_accepts_minimal_success() -> N
     assert issues == []
 
 
+def test_classify_full_live_workflow_smoke_issues_requires_readable_question_prompts() -> None:
+    issues = classify_full_live_workflow_smoke_issues(
+        generation_response={"questions": [{"question_id": "q-1", "prompt": "Why?"}]},
+        submit_response={"success": True},
+        assessment_review={
+            "has_assessment": True,
+            "review_summary": "The answer is partially correct but misses the stable boundary contract.",
+        },
+        question_set_view={
+            "question_count": 1,
+            "current_question_id": "set-1-q-1",
+            "questions": [{"question_id": "set-1-q-1", "status": "answered"}],
+        },
+        graph_revision={
+            "has_active_revision": True,
+            "revision": {"node_count": 1, "relation_count": 0},
+            "nodes": [{"knowledge_node_id": "kn-1"}],
+        },
+        graph_main={
+            "nodes": [{"node_id": "kn-1"}],
+            "selected_cluster": {"center_node_id": "kn-1"},
+            "relations": [],
+        },
+        strict=False,
+    )
+
+    assert issues == ["missing_readable_generated_question_prompt"]
+
+
+def test_classify_full_live_workflow_smoke_issues_requires_readable_assessment_summary() -> None:
+    issues = classify_full_live_workflow_smoke_issues(
+        generation_response={
+            "questions": [
+                {
+                    "question_id": "q-1",
+                    "prompt": "Why should generated questions preserve stable transport identity?",
+                }
+            ]
+        },
+        submit_response={"success": True},
+        assessment_review={"has_assessment": True, "review_summary": ""},
+        question_set_view={
+            "question_count": 1,
+            "current_question_id": "set-1-q-1",
+            "questions": [{"question_id": "set-1-q-1", "status": "answered"}],
+        },
+        graph_revision={
+            "has_active_revision": True,
+            "revision": {"node_count": 1, "relation_count": 0},
+            "nodes": [{"knowledge_node_id": "kn-1"}],
+        },
+        graph_main={
+            "nodes": [{"node_id": "kn-1"}],
+            "selected_cluster": {"center_node_id": "kn-1"},
+            "relations": [],
+        },
+        strict=False,
+    )
+
+    assert issues == ["missing_readable_assessment_review_summary"]
+
+
 def test_classify_full_live_workflow_smoke_issues_treats_relation_as_strict_only() -> None:
     kwargs = {
-        "generation_response": {"questions": [{"question_id": "q-1"}]},
+        "generation_response": {"questions": [GOOD_GENERATED_QUESTION]},
         "submit_response": {"success": True},
-        "assessment_review": {"has_assessment": True, "review_title": "方向正确，但还需要补齐关键缺口"},
+        "assessment_review": GOOD_ASSESSMENT_REVIEW,
         "question_set_view": {
             "question_count": 1,
             "current_question_id": "set-1-q-1",
@@ -213,7 +287,7 @@ def test_format_full_live_workflow_smoke_report_surfaces_question_and_review_qua
 
 def test_classify_full_live_workflow_smoke_issues_requires_assessment_review() -> None:
     issues = classify_full_live_workflow_smoke_issues(
-        generation_response={"questions": [{"question_id": "q-1"}]},
+        generation_response={"questions": [GOOD_GENERATED_QUESTION]},
         submit_response={"success": True},
         assessment_review={"has_assessment": False},
         question_set_view={
@@ -239,9 +313,9 @@ def test_classify_full_live_workflow_smoke_issues_requires_assessment_review() -
 
 def test_classify_full_live_workflow_smoke_issues_requires_answered_question_progress() -> None:
     issues = classify_full_live_workflow_smoke_issues(
-        generation_response={"questions": [{"question_id": "q-1"}]},
+        generation_response={"questions": [GOOD_GENERATED_QUESTION]},
         submit_response={"success": True, "refresh_targets": ["question_detail", "stage_summary"]},
-        assessment_review={"has_assessment": True, "review_title": "方向正确，但还需要补齐关键缺口"},
+        assessment_review=GOOD_ASSESSMENT_REVIEW,
         question_set_view={
             "question_count": 1,
             "current_question_id": "set-1-q-1",
