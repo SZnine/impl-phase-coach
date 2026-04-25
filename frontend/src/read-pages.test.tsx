@@ -462,15 +462,18 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
   };
 }
 
-test("HomePage renders loaded project summaries and not the static placeholder", async () => {
+test("HomePage renders a task-first workbench entry instead of a generic project list", async () => {
   renderWithClient(<HomePage />, createClient(), "/");
 
   expect(screen.getByText("Loading home view...")).toBeInTheDocument();
-  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "今日任务" })).toBeInTheDocument();
+  expect(screen.getByText("先完成一组题目，再看评析，把薄弱点沉淀进知识库。")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "题目训练" })).toBeInTheDocument();
+  expect(screen.getByText("当前阶段：module-interface-boundary")).toBeInTheDocument();
   expect(screen.getByText("impl-phase-coach")).toBeInTheDocument();
-  expect(screen.getByText("module-interface-boundary")).toBeInTheDocument();
-  expect(screen.getAllByText("Pending proposals")[0].parentElement).toHaveTextContent("1");
-  expect(screen.getByRole("link", { name: "Open project" })).toHaveAttribute("href", "/projects/proj-1");
+  expect(screen.getByRole("link", { name: "进入今日训练" })).toHaveAttribute("href", "/projects/proj-1/stages/stage-1");
+  expect(screen.getByRole("link", { name: "查看知识沉淀" })).toHaveAttribute("href", "/knowledge");
+  expect(screen.getByRole("link", { name: "查看错题本" })).toHaveAttribute("href", "/mistakes");
   expect(screen.queryByText("Open the frozen project shell and inspect its stage list.")).not.toBeInTheDocument();
 });
 

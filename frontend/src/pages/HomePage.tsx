@@ -38,12 +38,19 @@ export function HomePage() {
     };
   }, [client]);
 
+  const activeProject =
+    state.status === "ready"
+      ? state.data.projects.find((project) => project.project_id === state.data.active_project_id) ??
+        state.data.projects[0] ??
+        null
+      : null;
+
   return (
     <section style={{ display: "grid", gap: "1rem" }}>
       <div>
-        <h1 style={{ margin: 0, fontSize: "2rem" }}>Projects</h1>
+        <h1 style={{ margin: 0, fontSize: "2rem" }}>今日任务</h1>
         <p style={{ margin: "0.5rem 0 0", color: "#475569" }}>
-          Start from a real project summary, then drill into its active stage and current question set.
+          先完成一组题目，再看评析，把薄弱点沉淀进知识库。
         </p>
       </div>
 
@@ -58,23 +65,34 @@ export function HomePage() {
         </div>
       ) : (
         <>
-          <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Workspace summary</h2>
-            <dl style={definitionListStyle}>
+          {activeProject ? (
+            <article style={heroStyle}>
               <div>
-                <dt style={termStyle}>Projects</dt>
-                <dd style={definitionStyle}>{state.data.total_count}</dd>
+                <p style={eyebrowStyle}>当前项目</p>
+                <h2 style={{ margin: "0.25rem 0 0", fontSize: "1.6rem" }}>{activeProject.project_label}</h2>
+                <p style={{ margin: "0.75rem 0 0", color: "#475569", lineHeight: 1.7 }}>
+                  {activeProject.project_summary}
+                </p>
               </div>
-              <div>
-                <dt style={termStyle}>Pending proposals</dt>
-                <dd style={definitionStyle}>{state.data.pending_proposal_count}</dd>
+              <div style={heroActionStyle}>
+                <h3 style={sectionHeadingStyle}>题目训练</h3>
+                <p style={{ margin: "0 0 0.75rem", color: "#475569" }}>
+                  当前阶段：{activeProject.active_stage_label}
+                </p>
+                <Link
+                  to={`/projects/${activeProject.project_id}/stages/${activeProject.active_stage_id}`}
+                  style={primaryLinkStyle}
+                >
+                  进入今日训练
+                </Link>
               </div>
-              <div>
-                <dt style={termStyle}>Active project</dt>
-                <dd style={definitionStyle}>{state.data.active_project_id ?? "none"}</dd>
-              </div>
-            </dl>
-          </article>
+            </article>
+          ) : (
+            <article style={panelStyle}>
+              <h2 style={sectionHeadingStyle}>暂无当前任务</h2>
+              <p style={{ margin: 0, color: "#475569" }}>还没有可训练的项目。</p>
+            </article>
+          )}
 
           <div
             style={{
@@ -83,30 +101,66 @@ export function HomePage() {
               gap: "1rem",
             }}
           >
+            <article style={cardStyle}>
+              <h2 style={cardHeadingStyle}>知识沉淀</h2>
+              <p style={cardTextStyle}>答题后的评析会转成知识点、误区和后续复习线索。</p>
+              <dl style={definitionListStyle}>
+                <div>
+                  <dt style={termStyle}>知识点</dt>
+                  <dd style={definitionStyle}>{activeProject?.knowledge_entry_count ?? 0}</dd>
+                </div>
+                <div>
+                  <dt style={termStyle}>待处理建议</dt>
+                  <dd style={definitionStyle}>{state.data.pending_proposal_count}</dd>
+                </div>
+              </dl>
+              <p style={{ margin: "0.75rem 0 0" }}>
+                <Link to="/knowledge">查看知识沉淀</Link>
+              </p>
+            </article>
+
+            <article style={cardStyle}>
+              <h2 style={cardHeadingStyle}>错题本</h2>
+              <p style={cardTextStyle}>集中回看回答里的误区和根因，避免下一轮题目重复踩坑。</p>
+              <dl style={definitionListStyle}>
+                <div>
+                  <dt style={termStyle}>错题/误区</dt>
+                  <dd style={definitionStyle}>{activeProject?.mistake_count ?? 0}</dd>
+                </div>
+                <div>
+                  <dt style={termStyle}>项目数</dt>
+                  <dd style={definitionStyle}>{state.data.total_count}</dd>
+                </div>
+              </dl>
+              <p style={{ margin: "0.75rem 0 0" }}>
+                <Link to="/mistakes">查看错题本</Link>
+              </p>
+            </article>
+
             {state.data.projects.map((project) => (
               <article key={project.project_id} style={cardStyle}>
-                <h2 style={cardHeadingStyle}>{project.project_label}</h2>
+                <h2 style={cardHeadingStyle}>项目复盘：{project.project_label}</h2>
                 <p style={cardTextStyle}>{project.project_summary}</p>
                 <dl style={definitionListStyle}>
                   <div>
-                    <dt style={termStyle}>Active stage</dt>
+                    <dt style={termStyle}>当前阶段</dt>
                     <dd style={definitionStyle}>{project.active_stage_label}</dd>
                   </div>
                   <div>
-                    <dt style={termStyle}>Knowledge entries</dt>
+                    <dt style={termStyle}>知识点</dt>
                     <dd style={definitionStyle}>{project.knowledge_entry_count}</dd>
                   </div>
                   <div>
-                    <dt style={termStyle}>Mistakes</dt>
+                    <dt style={termStyle}>误区</dt>
                     <dd style={definitionStyle}>{project.mistake_count}</dd>
                   </div>
                   <div>
-                    <dt style={termStyle}>Pending proposals</dt>
+                    <dt style={termStyle}>待处理建议</dt>
                     <dd style={definitionStyle}>{project.pending_proposal_count}</dd>
                   </div>
                 </dl>
                 <p style={{ margin: "0.75rem 0 0" }}>
-                  <Link to={`/projects/${project.project_id}`}>Open project</Link>
+                  <Link to={`/projects/${project.project_id}`}>打开项目复盘</Link>
                 </p>
               </article>
             ))}
@@ -132,3 +186,31 @@ const sectionHeadingStyle = { margin: "0 0 0.75rem" } as const;
 const definitionListStyle = { display: "grid", gap: "0.75rem", margin: 0 } as const;
 const termStyle = { fontSize: "0.875rem", color: "#64748b", fontWeight: 700 } as const;
 const definitionStyle = { margin: "0.25rem 0 0" } as const;
+const heroStyle = {
+  ...panelStyle,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.7fr) minmax(260px, 0.8fr)",
+  gap: "1rem",
+  alignItems: "center",
+} as const;
+const heroActionStyle = {
+  border: "1px solid rgba(21, 128, 61, 0.25)",
+  borderRadius: "0.85rem",
+  background: "#f0fdf4",
+  padding: "1rem",
+} as const;
+const eyebrowStyle = {
+  margin: 0,
+  color: "#15803d",
+  fontSize: "0.85rem",
+  fontWeight: 800,
+} as const;
+const primaryLinkStyle = {
+  display: "inline-flex",
+  borderRadius: "999px",
+  background: "#15803d",
+  color: "#fff",
+  padding: "0.7rem 1rem",
+  fontWeight: 800,
+  textDecoration: "none",
+} as const;
