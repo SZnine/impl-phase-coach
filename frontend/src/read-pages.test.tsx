@@ -24,6 +24,7 @@ import {
   type QuestionViewDTO,
   type StageViewDTO,
   type SubmitAnswerResponseDTO,
+  type AssessmentReviewViewDTO,
 } from "./lib/api";
 import { HomePage } from "./pages/HomePage";
 import { KnowledgeMapPage } from "./pages/KnowledgeMapPage";
@@ -304,19 +305,25 @@ const questionSetView: QuestionSetViewDTO = {
   question_set_id: "set-1",
   question_set_title: "Stage-1 review set",
   status: "active",
-  question_count: 2,
+  question_count: 3,
   current_question_id: "q-2",
   questions: [
     {
       question_id: "q-1",
       question_level: "core",
       prompt: "What is the core boundary here?",
-      status: "ready",
+      status: "answered",
     },
     {
       question_id: "q-2",
       question_level: "why",
       prompt: "Why is this boundary necessary?",
+      status: "ready",
+    },
+    {
+      question_id: "q-3",
+      question_level: "scenario",
+      prompt: "What failure scenario should be checked next?",
       status: "ready",
     },
   ],
@@ -333,6 +340,37 @@ const questionView: QuestionViewDTO = {
   answer_placeholder: "Answer in your own words",
   allowed_actions: ["continue_answering", "deepen", "pause_review", "skip_and_continue_project"],
   status: "ready",
+};
+
+const assessmentReviewView: AssessmentReviewViewDTO = {
+  project_id: "proj-1",
+  stage_id: "stage-1",
+  has_assessment: true,
+  assessment_id: "assessment-req-1",
+  question_set_id: "set-1",
+  question_id: "q-2",
+  verdict: "partial",
+  verdict_label: "部分掌握",
+  score_percent: 68,
+  confidence_percent: 74,
+  answer_excerpt: "Need review",
+  review_title: "方向正确，但还需要补齐关键缺口",
+  review_summary: "这次回答有可取之处，但还需要讲清：normalizer failure scenario。",
+  correct_points: ["结论方向基本正确"],
+  gap_points: ["normalizer failure scenario"],
+  misconception_points: ["treats storage as provider compatibility layer"],
+  evidence: ["The answer names normalizer but does not explain malformed provider output."],
+  recommended_follow_up_questions: ["If provider output contains both questions and items, which field wins?"],
+  learning_recommendations: ["Review provider output normalization and storage boundaries."],
+  knowledge_updates: [
+    {
+      update_type: "knowledge_entry",
+      title: "normalizer failure scenario",
+      summary: "Revisit why this stage needs: normalizer failure scenario",
+      status: "active",
+    },
+  ],
+  next_action_label: "继续追问一个失败场景",
 };
 
 function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
@@ -385,6 +423,7 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
     } satisfies ProposalActionResponseDTO),
     getQuestionSetView: vi.fn().mockResolvedValue(questionSetView),
     getQuestionView: vi.fn().mockResolvedValue(questionView),
+    getLatestAssessmentReview: vi.fn().mockResolvedValue(assessmentReviewView),
     generateQuestionSet: vi.fn().mockResolvedValue({
       request_id: "req-qgen-ui",
       questions: [
@@ -408,7 +447,7 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
       action_type: "submit_answer",
       result_type: "assessment_created",
       message: "Assessment created with verdict partial.",
-      refresh_targets: ["question_detail", "stage_summary"],
+      refresh_targets: ["question_detail", "stage_summary", "question_set"],
       assessment_summary: {
         assessment_id: "assessment-req-1",
         project_id: "proj-1",
@@ -637,10 +676,20 @@ test("QuestionSetPage renders loaded question set data and not the static placeh
 
   expect(screen.getByText("Loading question set...")).toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "Question set: Stage-1 review set" })).toBeInTheDocument();
+  expect(screen.getByText("已完成 1 / 3")).toBeInTheDocument();
   expect(screen.getByText("Question q-1")).toBeInTheDocument();
   expect(screen.getByText("What is the core boundary here?")).toBeInTheDocument();
+  expect(screen.getByText("已完成")).toBeInTheDocument();
   expect(screen.getByText("Question q-2")).toBeInTheDocument();
   expect(screen.getByText("Why is this boundary necessary?")).toBeInTheDocument();
+  expect(screen.getByText("当前题")).toBeInTheDocument();
+  expect(screen.getByText("Question q-3")).toBeInTheDocument();
+  expect(screen.getByText("What failure scenario should be checked next?")).toBeInTheDocument();
+  expect(screen.getByText("待完成")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "开始答题" })).toHaveAttribute(
+    "href",
+    "/projects/proj-1/stages/stage-1/questions/set-1/q-2",
+  );
   expect(screen.queryByText(/Question set: unknown-set/)).not.toBeInTheDocument();
 });
 
@@ -697,8 +746,62 @@ test("QuestionPage submits an answer and refreshes the stage summary", async () 
 
   expect(await screen.findByText("Assessment created with verdict partial.")).toBeInTheDocument();
   expect(screen.getByText("Answer excerpt: Need review")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "评析解析" })).toBeInTheDocument();
+  expect(screen.getByText("方向正确，但还需要补齐关键缺口")).toBeInTheDocument();
+  expect(screen.getByText("部分掌握 · 68%")).toBeInTheDocument();
+  expect(screen.getByText("normalizer failure scenario")).toBeInTheDocument();
+  expect(screen.getByText("知识沉淀")).toBeInTheDocument();
+  expect(screen.getByText("继续追问一个失败场景")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "返回题集" })).toHaveAttribute(
+    "href",
+    "/projects/proj-1/stages/stage-1/questions/set-1",
+  );
+  expect(screen.getByRole("link", { name: "进入下一题" })).toHaveAttribute(
+    "href",
+    "/projects/proj-1/stages/stage-1/questions/set-1/q-3",
+  );
   await waitFor(() => expect(screen.getByText("partially_verified")).toBeInTheDocument());
   expect(client.submitAnswer).toHaveBeenCalledTimes(1);
+  expect(client.getLatestAssessmentReview).toHaveBeenCalledWith("proj-1", "stage-1");
+  expect(client.getQuestionSetView).toHaveBeenCalledWith("proj-1", "stage-1", "set-1");
+});
+
+test("QuestionPage does not refresh question set when submit response omits that target", async () => {
+  const client = createClient({
+    submitAnswer: vi.fn().mockResolvedValue({
+      request_id: "req-no-question-set-refresh",
+      success: true,
+      action_type: "submit_answer",
+      result_type: "assessment_created",
+      message: "Assessment created with verdict partial.",
+      refresh_targets: ["question_detail", "stage_summary"],
+      assessment_summary: {
+        assessment_id: "assessment-req-no-question-set-refresh",
+        project_id: "proj-1",
+        stage_id: "stage-1",
+        question_set_id: "set-1",
+        question_id: "q-2",
+        answer_excerpt: "Need review",
+        status: "created",
+      },
+    } satisfies SubmitAnswerResponseDTO),
+    getQuestionSetView: vi.fn().mockResolvedValue(questionSetView),
+  });
+
+  renderWithClient(
+    <QuestionPage />,
+    client,
+    "/projects/proj-1/stages/stage-1/questions/set-1/q-2",
+  );
+
+  await screen.findByRole("heading", { name: "Question: Why is this boundary necessary?" });
+  fireEvent.change(screen.getByLabelText("Answer"), { target: { value: "Need review" } });
+  fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+
+  expect(await screen.findByText("Assessment created with verdict partial.")).toBeInTheDocument();
+  await waitFor(() => expect(client.getLatestAssessmentReview).toHaveBeenCalledWith("proj-1", "stage-1"));
+  expect(client.getQuestionSetView).not.toHaveBeenCalled();
+  expect(screen.queryByRole("link", { name: "进入下一题" })).not.toBeInTheDocument();
 });
 
 test("QuestionPage resets answer draft and submit state when route params change", async () => {

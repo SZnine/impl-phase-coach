@@ -2,6 +2,10 @@
 __pycache__/
 *.py[cod]
 
+.env/
+eval-live-smoke-*/
+tmp_review_check*/
+
 artifacts/
 .workbench/
 

@@ -301,6 +301,30 @@ export type SubmitAnswerResponseDTO = {
   assessment_summary: AssessmentSummaryDTO | null;
 };
 
+export type AssessmentReviewViewDTO = {
+  project_id: string;
+  stage_id: string;
+  has_assessment: boolean;
+  assessment_id: string | null;
+  question_set_id: string | null;
+  question_id: string | null;
+  verdict: string;
+  verdict_label: string;
+  score_percent: number;
+  confidence_percent: number;
+  answer_excerpt: string;
+  review_title: string;
+  review_summary: string;
+  correct_points: string[];
+  gap_points: string[];
+  misconception_points: string[];
+  evidence: string[];
+  recommended_follow_up_questions: string[];
+  learning_recommendations: string[];
+  knowledge_updates: Array<Record<string, string>>;
+  next_action_label: string;
+};
+
 export type ApiClient = {
   baseUrl: string;
   getWorkspaceSession(): Promise<WorkspaceSessionDTO>;
@@ -333,6 +357,7 @@ export type ApiClient = {
   ): Promise<QuestionViewDTO>;
   generateQuestionSet(request: GenerateQuestionSetRequestDTO): Promise<GenerateQuestionSetResponseDTO>;
   submitAnswer(request: SubmitAnswerRequestDTO): Promise<SubmitAnswerResponseDTO>;
+  getLatestAssessmentReview(projectId: string, stageId: string): Promise<AssessmentReviewViewDTO>;
 };
 
 type FetchLike = typeof fetch;
@@ -540,6 +565,16 @@ export function createApiClient(baseUrl = "/api", fetchImpl: FetchLike = fetch):
         `${normalizedBaseUrl}/actions/submit-answer`,
         request,
         "answer",
+      );
+    },
+    getLatestAssessmentReview(projectId, stageId) {
+      const query = new URLSearchParams();
+      query.set("project_id", projectId);
+      query.set("stage_id", stageId);
+      return readJson<AssessmentReviewViewDTO>(
+        fetchImpl,
+        `${normalizedBaseUrl}/assessments/latest-review?${query.toString()}`,
+        "latest assessment review",
       );
     },
   };

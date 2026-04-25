@@ -182,6 +182,10 @@ def create_app(
     def get_graph_revision_view(project_id: str, stage_id: str) -> dict:
         return workspace_api.get_graph_revision_view(project_id, stage_id).model_dump()
 
+    @app.get("/api/assessments/latest-review")
+    def get_latest_assessment_review(project_id: str, stage_id: str) -> dict:
+        return workspace_api.get_latest_assessment_review_view(project_id, stage_id).model_dump()
+
     @app.get("/api/proposals")
     def get_proposals_view() -> dict:
         return workspace_api.get_proposals_view().model_dump()

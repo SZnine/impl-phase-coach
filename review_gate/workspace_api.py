@@ -5,6 +5,7 @@ from review_gate.proposal_center_service import ProposalCenterService
 from review_gate.review_flow_service import ReviewFlowService
 from review_gate.storage_sqlite import SQLiteStore
 from review_gate.view_dtos import (
+    AssessmentReviewViewDTO,
     GraphRevisionNodeDTO,
     GraphRevisionRelationDTO,
     GraphRevisionSummaryDTO,
@@ -249,6 +250,52 @@ class WorkspaceAPI:
         question_id: str,
     ) -> QuestionViewDTO:
         return self._flow.get_question_view(project_id, stage_id, question_set_id, question_id)
+
+    def get_latest_assessment_review_view(self, project_id: str, stage_id: str) -> AssessmentReviewViewDTO:
+        assessment = self._flow.get_latest_assessment_snapshot(project_id, stage_id)
+        if assessment is None:
+            return AssessmentReviewViewDTO(project_id=project_id, stage_id=stage_id)
+
+        verdict = str(assessment.get("verdict", "")).strip()
+        score_percent = self._assessment_percent(assessment.get("score_total"))
+        confidence_percent = self._assessment_percent(assessment.get("confidence"))
+        gap_points = self._coerce_str_list(assessment.get("core_gaps"))
+        misconception_points = self._coerce_str_list(assessment.get("misconceptions"))
+        correct_points = self._assessment_correct_points(assessment)
+        return AssessmentReviewViewDTO(
+            project_id=project_id,
+            stage_id=stage_id,
+            has_assessment=True,
+            assessment_id=str(assessment.get("assessment_id", "")),
+            question_set_id=str(assessment.get("question_set_id", "")),
+            question_id=str(assessment.get("question_id", "")),
+            verdict=verdict,
+            verdict_label=self._assessment_verdict_label(verdict),
+            score_percent=score_percent,
+            confidence_percent=confidence_percent,
+            answer_excerpt=str(assessment.get("answer_excerpt", "")),
+            review_title=self._assessment_review_title(verdict, gap_points, misconception_points),
+            review_summary=self._assessment_review_summary(
+                verdict=verdict,
+                correct_points=correct_points,
+                gap_points=gap_points,
+                misconception_points=misconception_points,
+            ),
+            correct_points=correct_points,
+            gap_points=gap_points,
+            misconception_points=misconception_points,
+            evidence=self._coerce_str_list(assessment.get("evidence")),
+            recommended_follow_up_questions=self._coerce_str_list(
+                assessment.get("recommended_follow_up_questions")
+            ),
+            learning_recommendations=self._coerce_str_list(assessment.get("learning_recommendations")),
+            knowledge_updates=self._latest_assessment_knowledge_updates(
+                project_id=project_id,
+                stage_id=stage_id,
+                assessment_id=str(assessment.get("assessment_id", "")),
+            ),
+            next_action_label=self._assessment_next_action_label(verdict, gap_points, misconception_points),
+        )
 
     def get_mistakes_view(self, project_id: str | None = None, stage_id: str | None = None) -> MistakesViewDTO:
         items = [MistakeItemDTO(**item) for item in self._profile_space.list_mistakes(project_id, stage_id)]
@@ -714,3 +761,123 @@ class WorkspaceAPI:
         if "foundation_hot" in codes:
             return f"This area matters now because {label} is acting as a foundation hotspot."
         return f"This area matters now because {label} is part of the current knowledge map focus."
+
+    def _latest_assessment_knowledge_updates(
+        self,
+        *,
+        project_id: str,
+        stage_id: str,
+        assessment_id: str,
+    ) -> list[dict[str, str]]:
+        updates: list[dict[str, str]] = []
+        for item in self._profile_space.list_index_entries(project_id, stage_id):
+            if assessment_id and assessment_id not in str(item.get("entry_id", "")):
+                continue
+            updates.append(
+                {
+                    "update_type": "knowledge_entry",
+                    "title": str(item.get("title", "")),
+                    "summary": str(item.get("summary", "")),
+                    "status": str(item.get("status", "")),
+                }
+            )
+        for item in self._profile_space.list_mistakes(project_id, stage_id):
+            if assessment_id and assessment_id not in str(item.get("mistake_id", "")):
+                continue
+            updates.append(
+                {
+                    "update_type": "mistake",
+                    "title": str(item.get("label", "")),
+                    "summary": str(item.get("avoidance_summary", "")),
+                    "status": str(item.get("status", "")),
+                }
+            )
+        return updates
+
+    def _assessment_review_title(self, verdict: str, gaps: list[str], misconceptions: list[str]) -> str:
+        if verdict == "strong" and not gaps and not misconceptions:
+            return "回答扎实，可以进入下一组题"
+        if verdict in {"partial", "strong"}:
+            return "方向正确，但还需要补齐关键缺口"
+        if verdict == "weak":
+            return "当前回答还不稳，建议先补基础概念"
+        return "已生成评析，建议继续补充答案"
+
+    def _assessment_review_summary(
+        self,
+        *,
+        verdict: str,
+        correct_points: list[str],
+        gap_points: list[str],
+        misconception_points: list[str],
+    ) -> str:
+        if verdict == "strong" and not gap_points and not misconception_points:
+            return "这次回答已经覆盖主要考点，可以把它沉淀为稳定知识点。"
+        if gap_points:
+            return f"这次回答有可取之处，但还需要讲清：{gap_points[0]}。"
+        if misconception_points:
+            return f"这次回答暴露了一个误区：{misconception_points[0]}。"
+        if correct_points:
+            return f"这次回答至少体现了：{correct_points[0]}。"
+        return "这次评析已经生成，但还缺少足够的结构化证据。"
+
+    def _assessment_next_action_label(
+        self,
+        verdict: str,
+        gaps: list[str],
+        misconceptions: list[str],
+    ) -> str:
+        if gaps or misconceptions:
+            return "继续追问一个失败场景"
+        if verdict == "strong":
+            return "进入下一道题"
+        return "补充答案后重新评析"
+
+    def _assessment_verdict_label(self, verdict: str) -> str:
+        return {
+            "strong": "掌握较好",
+            "partial": "部分掌握",
+            "weak": "尚不稳定",
+        }.get(verdict, "未判断")
+
+    def _assessment_correct_points(self, assessment: dict) -> list[str]:
+        dimension_scores = assessment.get("dimension_scores")
+        if not isinstance(dimension_scores, dict):
+            dimension_scores = {}
+        labels = {
+            "correctness": "结论方向基本正确",
+            "reasoning": "推理链条有可复用部分",
+            "decision_awareness": "能说明取舍理由",
+            "boundary_awareness": "能识别关键边界",
+            "stability": "考虑了长期稳定性",
+        }
+        correct_points = [
+            label
+            for key, label in labels.items()
+            if int(dimension_scores.get(key, 0) or 0) >= 3
+        ]
+        if not correct_points and str(assessment.get("verdict", "")).strip() in {"partial", "strong"}:
+            correct_points.append("回答已经覆盖了题目的核心方向")
+        return correct_points
+
+    def _assessment_percent(self, value: object) -> int:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return 0
+        if numeric <= 1:
+            numeric *= 100
+        return max(0, min(100, round(numeric)))
+
+    def _coerce_str_list(self, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            items = value
+        elif isinstance(value, tuple):
+            items = list(value)
+        elif isinstance(value, dict):
+            items = list(value.values())
+        else:
+            items = [value]
+        return [str(item).strip() for item in items if str(item).strip()]

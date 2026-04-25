@@ -192,6 +192,21 @@ describe("createApiClient", () => {
     );
   });
 
+  test("reads latest assessment review from the backend HTTP path", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ has_assessment: true, review_title: "方向正确，但还需要补齐关键缺口" }),
+    });
+    const client = createApiClient("/api", fetchImpl as typeof fetch);
+
+    await client.getLatestAssessmentReview("proj-1", "stage-1");
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/assessments/latest-review?project_id=proj-1&stage_id=stage-1",
+      expect.any(Object),
+    );
+  });
+
   test("generates question sets through the backend action path", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

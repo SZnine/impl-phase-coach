@@ -85,6 +85,17 @@ http://127.0.0.1:5173
 powershell -ExecutionPolicy Bypass -File scripts/start-demo.ps1 -LiveAgents -ProjectModel gpt-5.4-mini -EvaluatorModel gpt-5.4-mini
 ```
 
+### 当前答题闭环口径
+
+Workbench 当前最小真实闭环已经收敛为：
+
+1. Project Agent 生成题集后，题集页读取 durable question checkpoint。
+2. 用户在 Question Detail 提交答案后，后端写入 answer / assessment / facts / graph，并把对应 question item 标记为 `answered`。
+3. `submit_answer` 响应的 `refresh_targets` 必须包含 `question_set`，前端只在收到该目标时刷新题集读面。
+4. Question Set 页面根据 question status 展示 `已完成 / 当前题 / 待完成`，并把入口推进到第一道未完成题。
+
+这条链路是当前产品主线：高质量出题、答题、评析解析、知识沉淀。知识星图用于总览和后续推荐，不应抢在答题闭环之前继续局部优化。
+
 ## 推荐阅读顺序
 
 1. [SKILL.md](/d:/Desktop/impl-phase-coach/SKILL.md)

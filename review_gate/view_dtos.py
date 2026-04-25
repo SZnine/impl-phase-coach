@@ -324,6 +324,31 @@ class AssessmentSummaryDTO(TransportModel):
 
 
 @dataclass(slots=True)
+class AssessmentReviewViewDTO(TransportModel):
+    project_id: str
+    stage_id: str
+    has_assessment: bool = False
+    assessment_id: str | None = None
+    question_set_id: str | None = None
+    question_id: str | None = None
+    verdict: str = ""
+    verdict_label: str = ""
+    score_percent: int = 0
+    confidence_percent: int = 0
+    answer_excerpt: str = ""
+    review_title: str = ""
+    review_summary: str = ""
+    correct_points: list[str] = field(default_factory=list)
+    gap_points: list[str] = field(default_factory=list)
+    misconception_points: list[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
+    recommended_follow_up_questions: list[str] = field(default_factory=list)
+    learning_recommendations: list[str] = field(default_factory=list)
+    knowledge_updates: list[dict[str, str]] = field(default_factory=list)
+    next_action_label: str = ""
+
+
+@dataclass(slots=True)
 class SubmitAnswerResponseDTO(TransportModel):
     request_id: str
     success: bool

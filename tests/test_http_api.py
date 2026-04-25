@@ -73,6 +73,32 @@ class SupportRelationAssessmentClient:
         }
 
 
+class HumanReadableAssessmentClient:
+    def assess(self, request: dict) -> dict:
+        return {
+            "request_id": request["request_id"],
+            "assessment": {
+                "score_total": 0.68,
+                "dimension_scores": {
+                    "correctness": 3,
+                    "reasoning": 2,
+                    "boundary_awareness": 1,
+                    "stability": 2,
+                },
+                "verdict": "partial",
+                "core_gaps": ["normalizer failure scenario"],
+                "misconceptions": ["treats storage as provider compatibility layer"],
+                "support_basis_tags": [],
+                "evidence": ["The answer names normalizer but does not explain malformed provider output."],
+            },
+            "recommended_action": "continue_answering",
+            "recommended_follow_up_questions": ["If provider output contains both questions and items, which field wins?"],
+            "learning_recommendations": ["Review provider output normalization and storage boundaries."],
+            "warnings": [],
+            "confidence": 0.74,
+        }
+
+
 def test_http_api_returns_home_view() -> None:
     proposal_center = ProposalCenterService.for_testing()
     proposal_center.create_compression_proposals(
@@ -480,6 +506,69 @@ def test_http_api_graph_main_reads_support_relation_after_submit(tmp_path: Path)
     assert previews_by_node_id[relation["to_node_id"]][0]["direction"] == "incoming"
 
 
+def test_http_api_returns_latest_assessment_review_surface_after_submit(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "workbench.sqlite3")
+    store.initialize()
+    flow = ReviewFlowService(
+        assessment_client=HumanReadableAssessmentClient(),
+        store=store,
+    )
+    client = TestClient(
+        create_app(
+            api=WorkspaceAPI(
+                flow=flow,
+                profile_space=ProfileSpaceService.with_store(store),
+                checkpoint_store=store,
+            )
+        )
+    )
+
+    submit_response = client.post(
+        "/api/actions/submit-answer",
+        json={
+            "request_id": "req-assessment-review",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "question_detail",
+            "actor_id": "local-user",
+            "created_at": "2026-04-23T10:00:00Z",
+            "question_set_id": "set-1",
+            "question_id": "set-1-q-1",
+            "answer_text": "I would normalize provider output, but I did not describe the malformed-output branch.",
+            "draft_id": None,
+        },
+    )
+
+    review_response = client.get(
+        "/api/assessments/latest-review",
+        params={"project_id": "proj-1", "stage_id": "stage-1"},
+    )
+
+    assert submit_response.status_code == 200
+    assert submit_response.json()["success"] is True
+    assert review_response.status_code == 200
+    review = review_response.json()
+    assert review["has_assessment"] is True
+    assert review["assessment_id"] == "assessment-req-assessment-review"
+    assert review["verdict"] == "partial"
+    assert review["verdict_label"] == "部分掌握"
+    assert review["score_percent"] == 68
+    assert review["confidence_percent"] == 74
+    assert review["answer_excerpt"] == "I would normalize provider output, but I did not describe the malformed-output branch."
+    assert review["review_title"] == "方向正确，但还需要补齐关键缺口"
+    assert "结论方向基本正确" in review["correct_points"]
+    assert "normalizer failure scenario" in review["gap_points"]
+    assert "treats storage as provider compatibility layer" in review["misconception_points"]
+    assert review["recommended_follow_up_questions"] == [
+        "If provider output contains both questions and items, which field wins?"
+    ]
+    assert review["learning_recommendations"] == [
+        "Review provider output normalization and storage boundaries."
+    ]
+    assert review["knowledge_updates"][0]["title"] == "normalizer failure scenario"
+    assert review["next_action_label"] == "继续追问一个失败场景"
+
+
 def test_default_http_api_graph_revision_returns_empty_without_active_revision(tmp_path: Path) -> None:
     db_path = tmp_path / "workbench.sqlite3"
     session_path = tmp_path / "workspace-session.json"
@@ -611,6 +700,65 @@ def test_http_api_generate_question_set_action_returns_generated_questions_and_p
     assert data["questions"][0]["prompt"] == "Why should generated questions cross the HTTP action boundary?"
     assert store.get_workflow_request("req-http-generate-action") is not None
     assert store.get_question_batch("qb-req-http-generate-action") is not None
+
+
+def test_http_api_answering_generated_question_updates_question_set_progress(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "workbench.sqlite3")
+    store.initialize()
+    flow = ReviewFlowService(
+        question_generation_client=StaticQuestionGenerationClient(),
+        assessment_client=HumanReadableAssessmentClient(),
+        store=store,
+    )
+    client = TestClient(create_app(api=WorkspaceAPI(flow=flow, checkpoint_store=store)))
+    generate_response = client.post(
+        "/api/actions/generate-question-set",
+        json={
+            "request_id": "req-http-progress-qgen",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "question_set",
+            "actor_id": "local-user",
+            "created_at": "2026-04-23T10:00:00Z",
+            "stage_label": "module-interface-boundary",
+            "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+            "stage_summary": "HTTP progress regression",
+            "current_decisions": ["Question progress action"],
+            "key_logic_points": ["submit updates question status"],
+            "known_weak_points": [],
+            "boundary_focus": ["question progress"],
+            "question_strategy": "full_depth",
+            "max_questions": 1,
+            "source_refs": ["tests/test_http_api.py"],
+        },
+    )
+
+    submit_response = client.post(
+        "/api/actions/submit-answer",
+        json={
+            "request_id": "req-http-progress-submit",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "source_page": "question_detail",
+            "actor_id": "local-user",
+            "created_at": "2026-04-23T10:01:00Z",
+            "question_set_id": "set-1",
+            "question_id": "set-1-q-1",
+            "answer_text": "The route must preserve generated question identity and update progress after assessment.",
+            "draft_id": None,
+        },
+    )
+    question_set_response = client.get("/api/projects/proj-1/stages/stage-1/questions/set-1")
+
+    assert generate_response.status_code == 200
+    assert submit_response.status_code == 200
+    assert submit_response.json()["refresh_targets"] == ["question_detail", "stage_summary", "question_set"]
+    assert question_set_response.status_code == 200
+    question_set_data = question_set_response.json()
+    assert question_set_data["question_count"] == 1
+    assert question_set_data["questions"][0]["question_id"] == "set-1-q-1"
+    assert question_set_data["questions"][0]["status"] == "answered"
+    assert question_set_data["current_question_id"] == "set-1-q-1"
 
 
 def test_http_api_submit_answer_returns_assessment_and_refreshes_stage_mastery() -> None:

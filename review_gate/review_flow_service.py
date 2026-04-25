@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from review_gate.action_dtos import SubmitAnswerRequest
@@ -225,7 +225,7 @@ class ReviewFlowService:
                 question_set_title=f"Generated question set {question_set_id}",
                 status="active",
                 question_count=len(questions),
-                current_question_id=questions[0].question_id,
+                current_question_id=self._resolve_current_question_id(questions),
                 questions=questions,
             )
 
@@ -251,6 +251,15 @@ class ReviewFlowService:
             current_question_id=questions[0].question_id,
             questions=questions,
         )
+
+    @staticmethod
+    def _resolve_current_question_id(questions: list[QuestionSummaryDTO]) -> str | None:
+        for question in questions:
+            if question.status not in {"answered", "assessed", "completed", "submitted"}:
+                return question.question_id
+        if not questions:
+            return None
+        return questions[0].question_id
 
     def project_exists(self, project_id: str | None) -> bool:
         return project_id is not None and project_id in self._PROJECTS
@@ -702,6 +711,14 @@ class ReviewFlowService:
                 "question_set_id": request.question_set_id,
                 "question_id": request.question_id,
                 "confidence": float(assessment_response.get("confidence", 0.0)),
+                "answer_excerpt": answer_excerpt,
+                "recommended_action": str(assessment_response.get("recommended_action", "")),
+                "recommended_follow_up_questions": self._coerce_str_list(
+                    assessment_response.get("recommended_follow_up_questions")
+                ),
+                "learning_recommendations": self._coerce_str_list(
+                    assessment_response.get("learning_recommendations")
+                ),
             }
         )
         self._latest_assessments[(request.project_id, request.stage_id)] = assessment
@@ -753,6 +770,7 @@ class ReviewFlowService:
                 )
             )
             self._store.upsert_assessment_fact(AssessmentFact.from_dict(assessment))
+            self._mark_resolved_question_answered(resolved_chain)
 
         if verdict in {"partial", "strong"}:
             self._set_stage_mastery_status(request.project_id, request.stage_id, "partially_verified")
@@ -785,10 +803,22 @@ class ReviewFlowService:
             action_type="submit_answer",
             result_type="assessment_created",
             message=f"Assessment created with verdict {verdict}.",
-            refresh_targets=["question_detail", "stage_summary"],
+            refresh_targets=["question_detail", "stage_summary", "question_set"],
             assessment_summary=assessment_summary,
 
         )
+
+    def _mark_resolved_question_answered(self, resolved_chain: ResolvedQuestionChain | None) -> None:
+        if self._store is None or resolved_chain is None:
+            return
+
+        for item in self._store.list_question_items(resolved_chain.question_batch_id):
+            if item.question_id != resolved_chain.question_item_id:
+                continue
+            if item.status == "answered":
+                return
+            self._store.insert_question_items([replace(item, status="answered")])
+            return
 
     def _persist_question_generation_checkpoint(self, request: dict, response: dict) -> None:
         question_set_id = self._resolve_stage_question_set_id(

@@ -572,6 +572,57 @@ def test_get_question_set_view_reads_latest_generated_checkpoint_questions(tmp_p
     assert view.questions[1].prompt == "Why did we choose this boundary?"
 
 
+def test_submit_answer_marks_generated_question_answered_and_advances_question_set_cursor(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "review.sqlite3")
+    store.initialize()
+    store.upsert_question_set(_semantic_question_set())
+    service = ReviewFlowService(
+        assessment_client=CapturingAssessmentClient(),
+        store=store,
+    )
+    service.generate_question_set(
+        {
+            "request_id": "req-qgen-progress-1",
+            "project_id": "proj-1",
+            "stage_id": "stage-1",
+            "stage_label": "module-interface-boundary",
+            "stage_goal": "freeze the minimal Question / Assessment / Decision boundary",
+            "stage_summary": "Generated question progress regression",
+            "current_decisions": ["Question generation action"],
+            "key_logic_points": ["HTTP route delegates to service"],
+            "known_weak_points": [],
+            "boundary_focus": ["question progress"],
+            "question_strategy": "core_and_why",
+            "max_questions": 2,
+            "source_refs": ["tests/test_review_flow_service.py"],
+        }
+    )
+
+    response = service.submit_answer(
+        SubmitAnswerRequest(
+            request_id="req-submit-progress-1",
+            project_id="proj-1",
+            stage_id="stage-1",
+            source_page="question_detail",
+            actor_id="local-user",
+            created_at="2026-04-23T10:00:00Z",
+            question_set_id="set-1",
+            question_id="set-1-q-1",
+            answer_text="The boundary is the stable contract between question generation and answer assessment.",
+            draft_id=None,
+        )
+    )
+
+    view = service.get_question_set_view("proj-1", "stage-1", "set-1")
+
+    assert response.success is True
+    assert [(item.question_id, item.status) for item in view.questions] == [
+        ("set-1-q-1", "answered"),
+        ("set-1-q-2", "ready"),
+    ]
+    assert view.current_question_id == "set-1-q-2"
+
+
 def test_get_question_view_reads_latest_generated_checkpoint_question_detail(tmp_path: Path) -> None:
     store = SQLiteStore(tmp_path / "review.sqlite3")
     store.initialize()
@@ -672,6 +723,7 @@ def test_submit_answer_uses_current_question_context_and_user_excerpt() -> None:
     assert response.assessment_summary is not None
     assert response.assessment_summary.answer_excerpt == "We split the boundary to keep state and scoring separate."
     assert response.message == "Assessment created with verdict partial."
+    assert response.refresh_targets == ["question_detail", "stage_summary", "question_set"]
     assert assessment_client.requests[0]["question_id"] == "set-1-q-2"
     assert assessment_client.requests[0]["question_set_id"] == "set-1"
     assert assessment_client.requests[0]["question_level"] == "why"
@@ -1428,7 +1480,7 @@ def test_submit_answer_persists_first_checkpoint_chain_without_prior_generation(
             intent="Preserve submit-side checkpoint continuity.",
             difficulty_level="core",
             order_index=0,
-            status="ready",
+            status="answered",
             created_at="2026-04-09T12:00:00Z",
             payload={
                 "request_id": "req-chain-1",

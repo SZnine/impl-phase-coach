@@ -117,6 +117,13 @@ def main() -> int:
         "/api/knowledge/graph-revision",
         params={"project_id": "proj-1", "stage_id": "stage-1"},
     ).json()
+    assessment_review = client.get(
+        "/api/assessments/latest-review",
+        params={"project_id": "proj-1", "stage_id": "stage-1"},
+    ).json()
+    question_set_view = client.get(
+        "/api/projects/proj-1/stages/stage-1/questions/set-1",
+    ).json()
     graph_main = client.get(
         "/api/knowledge/graph-main",
         params={"project_id": "proj-1", "stage_id": "stage-1"},
@@ -125,6 +132,8 @@ def main() -> int:
     issues = classify_full_live_workflow_smoke_issues(
         generation_response=generation_response,
         submit_response=submit_response,
+        assessment_review=assessment_review,
+        question_set_view=question_set_view,
         graph_revision=graph_revision,
         graph_main=graph_main,
         strict=args.strict,
@@ -133,6 +142,8 @@ def main() -> int:
         generation_response=generation_response,
         selected_question_id=selected_question_id,
         submit_response=submit_response,
+        assessment_review=assessment_review,
+        question_set_view=question_set_view,
         graph_revision=graph_revision,
         graph_main=graph_main,
         issues=issues,

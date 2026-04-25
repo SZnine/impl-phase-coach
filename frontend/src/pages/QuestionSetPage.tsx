@@ -8,6 +8,8 @@ type QuestionSetLoadState =
   | { status: "error"; data: null; error: string }
   | { status: "ready"; data: QuestionSetViewDTO; error: null };
 
+type QuestionSummary = QuestionSetViewDTO["questions"][number];
+
 export function QuestionSetPage() {
   const {
     projectId = "unknown-project",
@@ -16,6 +18,15 @@ export function QuestionSetPage() {
   } = useParams();
   const client = useApiClient();
   const [state, setState] = useState<QuestionSetLoadState>({ status: "loading", data: null, error: null });
+  const entryQuestion =
+    state.status === "ready"
+      ? state.data.questions.find((question) => question.question_id === state.data.current_question_id) ??
+        state.data.questions[0] ??
+        null
+      : null;
+  const completedQuestionCount =
+    state.status === "ready" ? state.data.questions.filter((question) => isCompletedQuestion(question)).length : 0;
+  const totalQuestionCount = state.status === "ready" ? state.data.questions.length : 0;
 
   useEffect(() => {
     let active = true;
@@ -72,37 +83,76 @@ export function QuestionSetPage() {
               </div>
               <div>
                 <dt style={termStyle}>Questions</dt>
-                <dd style={definitionStyle}>{state.data.question_count}</dd>
+                <dd style={definitionStyle}>
+                  {state.data.question_count}
+                  <span style={progressLabelStyle}>已完成 {completedQuestionCount} / {totalQuestionCount}</span>
+                </dd>
               </div>
               <div>
                 <dt style={termStyle}>Current question</dt>
                 <dd style={definitionStyle}>{state.data.current_question_id ?? "none"}</dd>
               </div>
             </dl>
+            {entryQuestion ? (
+              <div style={{ marginTop: "1rem" }}>
+                <Link
+                  to={`/projects/${projectId}/stages/${stageId}/questions/${questionSetId}/${entryQuestion.question_id}`}
+                  style={buttonLinkStyle}
+                >
+                  开始答题
+                </Link>
+                <p style={{ margin: "0.5rem 0 0", color: "#475569" }}>
+                  当前推荐：{entryQuestion.prompt}
+                </p>
+              </div>
+            ) : null}
           </article>
 
           <article style={panelStyle}>
             <h2 style={sectionHeadingStyle}>Questions</h2>
             <ul style={listStyle}>
-              {state.data.questions.map((question) => (
-                <li key={question.question_id} style={{ marginBottom: "0.75rem" }}>
-                  <Link
-                    to={`/projects/${projectId}/stages/${stageId}/questions/${questionSetId}/${question.question_id}`}
-                  >
-                    Question {question.question_id}
-                  </Link>
-                  <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
-                    <strong>{question.question_level}</strong>
-                  </p>
-                  <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>{question.prompt}</p>
-                </li>
-              ))}
+              {state.data.questions.map((question) => {
+                const displayStatus = getQuestionDisplayStatus(question, state.data.current_question_id);
+
+                return (
+                  <li key={question.question_id} style={{ marginBottom: "0.75rem" }}>
+                    <div style={questionTitleRowStyle}>
+                      <Link
+                        to={`/projects/${projectId}/stages/${stageId}/questions/${questionSetId}/${question.question_id}`}
+                      >
+                        Question {question.question_id}
+                      </Link>
+                      <span style={displayStatus.style}>{displayStatus.label}</span>
+                    </div>
+                    <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
+                      <strong>{question.question_level}</strong>
+                    </p>
+                    <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>{question.prompt}</p>
+                  </li>
+                );
+              })}
             </ul>
           </article>
         </div>
       )}
     </section>
   );
+}
+
+function getQuestionDisplayStatus(question: QuestionSummary, currentQuestionId: string | null) {
+  if (question.question_id === currentQuestionId) {
+    return { label: "当前题", style: currentQuestionStatusStyle };
+  }
+
+  if (isCompletedQuestion(question)) {
+    return { label: "已完成", style: completedQuestionStatusStyle };
+  }
+
+  return { label: "待完成", style: pendingQuestionStatusStyle };
+}
+
+function isCompletedQuestion(question: QuestionSummary) {
+  return ["answered", "assessed", "completed", "submitted"].includes(question.status.toLowerCase());
 }
 
 const panelStyle = {
@@ -117,3 +167,48 @@ const definitionListStyle = { display: "grid", gap: "0.75rem", margin: 0 } as co
 const termStyle = { fontSize: "0.875rem", color: "#64748b", fontWeight: 700 } as const;
 const definitionStyle = { margin: "0.25rem 0 0" } as const;
 const listStyle = { margin: 0, paddingLeft: "1.25rem" } as const;
+const progressLabelStyle = {
+  display: "inline-flex",
+  marginLeft: "0.75rem",
+  color: "#15803d",
+  fontWeight: 800,
+} as const;
+const questionTitleRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+} as const;
+const questionStatusBaseStyle = {
+  borderRadius: "999px",
+  padding: "0.2rem 0.6rem",
+  fontSize: "0.8rem",
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+} as const;
+const currentQuestionStatusStyle = {
+  ...questionStatusBaseStyle,
+  background: "#ecfdf5",
+  color: "#15803d",
+} as const;
+const completedQuestionStatusStyle = {
+  ...questionStatusBaseStyle,
+  background: "#dcfce7",
+  color: "#166534",
+} as const;
+const pendingQuestionStatusStyle = {
+  ...questionStatusBaseStyle,
+  background: "#f8fafc",
+  color: "#64748b",
+} as const;
+const buttonLinkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: "999px",
+  padding: "0.7rem 1rem",
+  background: "#15803d",
+  color: "#fff",
+  fontWeight: 800,
+  textDecoration: "none",
+} as const;

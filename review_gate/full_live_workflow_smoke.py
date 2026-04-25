@@ -26,6 +26,8 @@ def classify_full_live_workflow_smoke_issues(
     *,
     generation_response: dict[str, Any],
     submit_response: dict[str, Any],
+    assessment_review: dict[str, Any],
+    question_set_view: dict[str, Any],
     graph_revision: dict[str, Any],
     graph_main: dict[str, Any],
     strict: bool,
@@ -36,6 +38,13 @@ def classify_full_live_workflow_smoke_issues(
         issues.append("missing_generated_questions")
     if submit_response.get("success") is not True:
         issues.append("submit_failed")
+    refresh_targets = submit_response.get("refresh_targets")
+    if isinstance(refresh_targets, list) and "question_set" not in refresh_targets:
+        issues.append("missing_question_set_refresh_target")
+    if assessment_review.get("has_assessment") is not True:
+        issues.append("missing_assessment_review")
+    if _answered_question_count(question_set_view) < 1:
+        issues.append("missing_answered_question_progress")
     if graph_revision.get("has_active_revision") is not True:
         issues.append("missing_active_graph_revision")
 
@@ -58,6 +67,8 @@ def build_full_live_workflow_smoke_artifact(
     generation_response: dict[str, Any],
     selected_question_id: str,
     submit_response: dict[str, Any],
+    assessment_review: dict[str, Any],
+    question_set_view: dict[str, Any],
     graph_revision: dict[str, Any],
     graph_main: dict[str, Any],
     issues: list[str],
@@ -73,6 +84,8 @@ def build_full_live_workflow_smoke_artifact(
         "issues": list(issues),
         "generation_response": generation_response,
         "submit_response": submit_response,
+        "assessment_review": assessment_review,
+        "question_set_view": question_set_view,
         "graph_revision": graph_revision,
         "graph_main": graph_main,
     }
@@ -86,6 +99,13 @@ def format_full_live_workflow_smoke_report(artifact: dict[str, Any]) -> str:
     revision = graph_revision.get("revision", {}) if isinstance(graph_revision, dict) else {}
     graph_main = artifact.get("graph_main", {})
     selected_cluster = graph_main.get("selected_cluster", {}) if isinstance(graph_main, dict) else {}
+    assessment_review = artifact.get("assessment_review", {})
+    question_set_view = artifact.get("question_set_view", {})
+    knowledge_updates = (
+        assessment_review.get("knowledge_updates", [])
+        if isinstance(assessment_review, dict)
+        else []
+    )
     issues = artifact.get("issues") or []
     lines = [
         "# Full Live Workflow Smoke Report",
@@ -98,6 +118,15 @@ def format_full_live_workflow_smoke_report(artifact: dict[str, Any]) -> str:
         "## Generation",
         f"generated_question_count: {generated_question_count}",
         f"selected_question_id: {artifact.get('selected_question_id', '')}",
+        "",
+        "## Question Set Progress",
+        f"answered_question_count: {_answered_question_count(question_set_view)}",
+        f"current_question_id: {question_set_view.get('current_question_id', '') if isinstance(question_set_view, dict) else ''}",
+        "",
+        "## Assessment Review",
+        f"review_title: {assessment_review.get('review_title', '') if isinstance(assessment_review, dict) else ''}",
+        f"verdict_label: {assessment_review.get('verdict_label', '') if isinstance(assessment_review, dict) else ''}",
+        f"knowledge_update_count: {len(knowledge_updates) if isinstance(knowledge_updates, list) else 0}",
         "",
         "## Graph Revision",
         f"node_count: {revision.get('node_count', 0)}",
@@ -116,3 +145,16 @@ def _coerce_int(value: object) -> int:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0
+
+
+def _answered_question_count(question_set_view: object) -> int:
+    if not isinstance(question_set_view, dict):
+        return 0
+    questions = question_set_view.get("questions")
+    if not isinstance(questions, list):
+        return 0
+    return sum(
+        1
+        for question in questions
+        if isinstance(question, dict) and str(question.get("status", "")).strip() == "answered"
+    )

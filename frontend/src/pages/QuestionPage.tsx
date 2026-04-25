@@ -1,8 +1,10 @@
-﻿import { FormEvent, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { FormEvent, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 
 import {
   useApiClient,
+  type AssessmentReviewViewDTO,
+  type QuestionSetViewDTO,
   type StageViewDTO,
   type QuestionViewDTO,
   type SubmitAnswerResponseDTO,
@@ -38,6 +40,8 @@ export function QuestionPage() {
   const [submitState, setSubmitState] = useState<"idle" | "submitting">("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitAnswerResponseDTO | null>(null);
+  const [assessmentReview, setAssessmentReview] = useState<AssessmentReviewViewDTO | null>(null);
+  const [nextQuestionId, setNextQuestionId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -46,6 +50,8 @@ export function QuestionPage() {
     setSubmitState("idle");
     setSubmitError(null);
     setSubmitResult(null);
+    setAssessmentReview(null);
+    setNextQuestionId(null);
 
     Promise.all([
       client.getStageView(projectId, stageId),
@@ -77,6 +83,8 @@ export function QuestionPage() {
     setSubmitState("submitting");
     setSubmitError(null);
     setSubmitResult(null);
+    setAssessmentReview(null);
+    setNextQuestionId(null);
 
     try {
       const response = await client.submitAnswer({
@@ -93,7 +101,14 @@ export function QuestionPage() {
       });
       setSubmitResult(response);
 
-      const refreshedStage = await client.getStageView(projectId, stageId);
+      const shouldRefreshQuestionSet = response.refresh_targets.includes("question_set");
+      const [refreshedStage, latestReview, questionSet] = await Promise.all([
+        client.getStageView(projectId, stageId),
+        client.getLatestAssessmentReview(projectId, stageId),
+        shouldRefreshQuestionSet ? client.getQuestionSetView(projectId, stageId, questionSetId) : Promise.resolve(null),
+      ]);
+      setAssessmentReview(latestReview);
+      setNextQuestionId(questionSet ? findNextQuestionId(questionSet, questionId) : null);
       setPageState((current) =>
         current.status === "ready"
           ? {
@@ -209,6 +224,16 @@ export function QuestionPage() {
             ) : null}
           </article>
 
+          {assessmentReview?.has_assessment ? (
+            <AssessmentReviewPanel
+              review={assessmentReview}
+              projectId={projectId}
+              stageId={stageId}
+              questionSetId={questionSetId}
+              nextQuestionId={nextQuestionId}
+            />
+          ) : null}
+
           <article style={panelStyle}>
             <h2 style={sectionHeadingStyle}>Allowed actions</h2>
             <ul style={listStyle}>
@@ -219,6 +244,98 @@ export function QuestionPage() {
           </article>
         </div>
       )}
+    </section>
+  );
+}
+
+function findNextQuestionId(questionSet: QuestionSetViewDTO, currentQuestionId: string) {
+  const currentIndex = questionSet.questions.findIndex((question) => question.question_id === currentQuestionId);
+  if (currentIndex < 0) {
+    return null;
+  }
+  return questionSet.questions[currentIndex + 1]?.question_id ?? null;
+}
+
+function AssessmentReviewPanel({
+  review,
+  projectId,
+  stageId,
+  questionSetId,
+  nextQuestionId,
+}: {
+  review: AssessmentReviewViewDTO;
+  projectId: string;
+  stageId: string;
+  questionSetId: string;
+  nextQuestionId: string | null;
+}) {
+  const questionSetHref = `/projects/${projectId}/stages/${stageId}/questions/${questionSetId}`;
+  const nextQuestionHref = nextQuestionId ? `${questionSetHref}/${nextQuestionId}` : null;
+
+  return (
+    <article style={panelStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "start" }}>
+        <div>
+          <h2 style={sectionHeadingStyle}>评析解析</h2>
+          <p style={{ margin: 0, fontWeight: 800 }}>{review.review_title}</p>
+        </div>
+        <span style={scorePillStyle}>
+          {review.verdict_label} · {review.score_percent}%
+        </span>
+      </div>
+      {review.review_summary ? (
+        <p style={{ margin: "0.75rem 0 0", color: "#334155", lineHeight: 1.7 }}>{review.review_summary}</p>
+      ) : null}
+      <ReviewList title="答得不错的地方" items={review.correct_points} />
+      <ReviewList title="需要补齐的缺口" items={review.gap_points} />
+      <ReviewList title="可能的误区" items={review.misconception_points} />
+      <ReviewList title="下一组追问题" items={review.recommended_follow_up_questions} />
+
+      {review.knowledge_updates.length > 0 ? (
+        <section style={{ marginTop: "1rem" }}>
+          <h3 style={smallHeadingStyle}>知识沉淀</h3>
+          <ul style={listStyle}>
+            {review.knowledge_updates.map((update, index) => (
+              <li key={`${update.title ?? "knowledge"}-${index}`}>
+                <strong>{update.title ? `知识点：${update.title}` : "知识点"}</strong>
+                {update.summary ? <span>: {update.summary}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {review.next_action_label ? (
+        <p style={{ margin: "1rem 0 0", fontWeight: 800, color: "#15803d" }}>{review.next_action_label}</p>
+      ) : null}
+
+      <nav aria-label="Assessment follow-up actions" style={reviewNavStyle}>
+        <Link to={questionSetHref} style={secondaryLinkStyle}>
+          返回题集
+        </Link>
+        {nextQuestionHref ? (
+          <Link to={nextQuestionHref} style={primaryLinkStyle}>
+            进入下一题
+          </Link>
+        ) : null}
+      </nav>
+    </article>
+  );
+}
+
+function ReviewList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <section style={{ marginTop: "1rem" }}>
+      <h3 style={smallHeadingStyle}>{title}</h3>
+      <ul style={listStyle}>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -235,6 +352,38 @@ const definitionListStyle = { display: "grid", gap: "0.75rem", margin: 0 } as co
 const termStyle = { fontSize: "0.875rem", color: "#64748b", fontWeight: 700 } as const;
 const definitionStyle = { margin: "0.25rem 0 0" } as const;
 const listStyle = { margin: 0, paddingLeft: "1.25rem" } as const;
+const smallHeadingStyle = { margin: "0 0 0.5rem", fontSize: "1rem" } as const;
+const scorePillStyle = {
+  borderRadius: "999px",
+  background: "#dcfce7",
+  color: "#166534",
+  padding: "0.35rem 0.65rem",
+  fontSize: "0.875rem",
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+} as const;
+const reviewNavStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.75rem",
+  marginTop: "1rem",
+} as const;
+const primaryLinkStyle = {
+  borderRadius: "999px",
+  background: "#15803d",
+  color: "#fff",
+  padding: "0.65rem 0.9rem",
+  fontWeight: 800,
+  textDecoration: "none",
+} as const;
+const secondaryLinkStyle = {
+  borderRadius: "999px",
+  border: "1px solid rgba(21, 128, 61, 0.35)",
+  color: "#166534",
+  padding: "0.65rem 0.9rem",
+  fontWeight: 800,
+  textDecoration: "none",
+} as const;
 const textareaStyle = {
   width: "100%",
   minHeight: "8rem",
