@@ -493,19 +493,21 @@ test("StagePage renders loaded stage data and not the static placeholder", async
   renderWithClient(<StagePage />, createClient(), "/projects/proj-1/stages/stage-1");
 
   expect(screen.getByText("Loading stage view...")).toBeInTheDocument();
-  expect(await screen.findByRole("heading", { name: "Stage: Validation stage" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "今日训练准备" })).toBeInTheDocument();
+  expect(screen.getByText("先确认当前阶段，再生成题目进入训练。")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "训练阶段：Validation stage" })).toBeInTheDocument();
   expect(screen.getByText("Confirm boundary handling")).toBeInTheDocument();
   expect(screen.getByText("in_progress")).toBeInTheDocument();
   expect(screen.getByText("unverified")).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Knowledge summary" })).toBeInTheDocument();
-  expect(screen.getByText("Knowledge entries").parentElement).toHaveTextContent("1");
-  expect(screen.getByText("Mistakes").parentElement).toHaveTextContent("1");
+  expect(screen.getByRole("heading", { name: "已有知识沉淀" })).toBeInTheDocument();
+  expect(screen.getByText("知识点").parentElement).toHaveTextContent("1");
+  expect(screen.getByText("误区").parentElement).toHaveTextContent("1");
   expect(screen.getByText("synced partial assessment with 1 knowledge entries and 1 mistakes")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Open question set set-1" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: "进入题目训练" })).toHaveAttribute(
     "href",
     "/projects/proj-1/stages/stage-1/questions/set-1",
   );
-  expect(screen.getByRole("button", { name: "Generate Project Agent question set" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "让 Project Agent 生成题目" })).toBeInTheDocument();
   expect(screen.queryByText(/Nested under project/)).not.toBeInTheDocument();
 });
 
@@ -514,8 +516,8 @@ test("StagePage triggers Project Agent question generation from the workbench", 
 
   renderWithClient(<StagePage />, client, "/projects/proj-1/stages/stage-1");
 
-  await screen.findByRole("heading", { name: "Stage: Validation stage" });
-  fireEvent.click(screen.getByRole("button", { name: "Generate Project Agent question set" }));
+  await screen.findByRole("heading", { name: "训练阶段：Validation stage" });
+  fireEvent.click(screen.getByRole("button", { name: "让 Project Agent 生成题目" }));
 
   await waitFor(() =>
     expect(client.generateQuestionSet).toHaveBeenCalledWith(

@@ -91,9 +91,9 @@ export function StagePage() {
   return (
     <section style={{ display: "grid", gap: "1rem" }}>
       <div>
-        <h1 style={{ margin: 0 }}>Stage</h1>
+        <h1 style={{ margin: 0 }}>今日训练准备</h1>
         <p style={{ margin: "0.5rem 0 0", color: "#475569" }}>
-          {projectId} / {stageId}
+          先确认当前阶段，再生成题目进入训练。
         </p>
       </div>
 
@@ -109,50 +109,52 @@ export function StagePage() {
       ) : (
         <div style={{ display: "grid", gap: "1rem" }}>
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Stage: {state.data.stage_label}</h2>
+            <h2 style={sectionHeadingStyle}>训练阶段：{state.data.stage_label}</h2>
             <dl style={definitionListStyle}>
               <div>
-                <dt style={termStyle}>Goal</dt>
+                <dt style={termStyle}>训练目标</dt>
                 <dd style={definitionStyle}>{state.data.stage_goal}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Status</dt>
+                <dt style={termStyle}>阶段状态</dt>
                 <dd style={definitionStyle}>{state.data.status}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Mastery</dt>
+                <dt style={termStyle}>掌握状态</dt>
                 <dd style={definitionStyle}>{state.data.mastery_status}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Active question set</dt>
+                <dt style={termStyle}>当前题集</dt>
                 <dd style={definitionStyle}>{state.data.active_question_set_id ?? "none"}</dd>
               </div>
             </dl>
           </article>
 
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Knowledge summary</h2>
+            <h2 style={sectionHeadingStyle}>已有知识沉淀</h2>
             <dl style={definitionListStyle}>
               <div>
-                <dt style={termStyle}>Knowledge entries</dt>
+                <dt style={termStyle}>知识点</dt>
                 <dd style={definitionStyle}>{state.data.knowledge_summary?.knowledge_entry_count ?? 0}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Mistakes</dt>
+                <dt style={termStyle}>误区</dt>
                 <dd style={definitionStyle}>{state.data.knowledge_summary?.mistake_count ?? 0}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Latest extraction</dt>
+                <dt style={termStyle}>最近一次沉淀</dt>
                 <dd style={definitionStyle}>{state.data.knowledge_summary?.latest_summary ?? "No knowledge extracted yet."}</dd>
               </div>
             </dl>
           </article>
 
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Project boundary</h2>
-            <p style={{ margin: 0, color: "#475569" }}>Project {state.data.project_id} stays within the stage read view.</p>
+            <h2 style={sectionHeadingStyle}>出题入口</h2>
+            <p style={{ margin: 0, color: "#475569" }}>
+              用 Project Agent 根据当前阶段生成一组题目，然后进入题目训练页。
+            </p>
             <p style={{ margin: "0.75rem 0 0" }}>
-              Open a question set for this stage through the read chain, then drill into question detail.
+              生成题目后，工作台会继续把答题、评析解析和知识沉淀串成一条最小闭环。
             </p>
             <div style={{ margin: "0.75rem 0 0" }}>
               <button
@@ -161,7 +163,7 @@ export function StagePage() {
                 onClick={handleGenerateQuestionSet}
                 style={buttonStyle}
               >
-                {generationState === "generating" ? "Generating..." : "Generate Project Agent question set"}
+                {generationState === "generating" ? "正在生成题目..." : "让 Project Agent 生成题目"}
               </button>
             </div>
             {generationError ? (
@@ -176,10 +178,10 @@ export function StagePage() {
             ) : null}
             {activeQuestionSetHref ? (
               <p style={{ margin: "0.5rem 0 0" }}>
-                <Link to={activeQuestionSetHref}>Open question set {state.data.active_question_set_id}</Link>
+                <Link to={activeQuestionSetHref}>进入题目训练</Link>
               </p>
             ) : (
-              <p style={{ margin: "0.5rem 0 0", color: "#64748b" }}>No active question set is available yet.</p>
+              <p style={{ margin: "0.5rem 0 0", color: "#64748b" }}>当前还没有可进入的题集。</p>
             )}
           </article>
         </div>
