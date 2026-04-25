@@ -40,25 +40,25 @@ export function WorkbenchLayout() {
         >
           <div>
             <div style={{ fontSize: "0.75rem", letterSpacing: "0.18em", textTransform: "uppercase", color: "#64748b" }}>
-              Review Workbench
+              Coach 工作台
             </div>
-            <div style={{ fontSize: "1.1rem", fontWeight: 700 }}>Local stage-by-stage workspace</div>
+            <div style={{ fontSize: "1.1rem", fontWeight: 700 }}>出题、答题、评析、知识沉淀</div>
           </div>
           <nav style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }} aria-label="Primary">
             <NavLink to="/" style={navLinkStyle} end>
-              Projects
+              今日任务
             </NavLink>
             <NavLink to="/mistakes" style={navLinkStyle}>
-              Mistakes
+              错题本
             </NavLink>
             <NavLink to="/knowledge" style={navLinkStyle}>
-              Knowledge
+              知识沉淀
             </NavLink>
             <NavLink to="/knowledge/graph" style={navLinkStyle}>
-              Knowledge Graph
+              知识星图
             </NavLink>
             <NavLink to="/proposals" style={navLinkStyle}>
-              Proposals
+              改进建议
             </NavLink>
           </nav>
         </div>

@@ -30,11 +30,13 @@ afterEach(() => {
 test("renders workbench navigation", () => {
   render(<App />);
 
-  expect(screen.getByRole("link", { name: "Projects" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Mistakes" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Knowledge" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Knowledge Graph" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Proposals" })).toBeInTheDocument();
+  expect(screen.getByText("Coach 工作台")).toBeInTheDocument();
+  expect(screen.getByText("出题、答题、评析、知识沉淀")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "今日任务" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "错题本" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "知识沉淀" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "知识星图" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "改进建议" })).toBeInTheDocument();
 });
 
 test("registers the project -> stage -> question route hierarchy", () => {
