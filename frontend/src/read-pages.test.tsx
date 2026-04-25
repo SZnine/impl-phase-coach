@@ -675,18 +675,20 @@ test("QuestionSetPage renders loaded question set data and not the static placeh
   );
 
   expect(screen.getByText("Loading question set...")).toBeInTheDocument();
-  expect(await screen.findByRole("heading", { name: "Question set: Stage-1 review set" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "题目训练" })).toBeInTheDocument();
+  expect(screen.getByText("今天先完成一组高质量题目，答完后会给出评析并沉淀到知识库。")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "当前推荐题" })).toBeInTheDocument();
   expect(screen.getByText("已完成 1 / 3")).toBeInTheDocument();
-  expect(screen.getByText("Question q-1")).toBeInTheDocument();
+  expect(screen.getByText("题目 q-1")).toBeInTheDocument();
   expect(screen.getByText("What is the core boundary here?")).toBeInTheDocument();
   expect(screen.getByText("已完成")).toBeInTheDocument();
-  expect(screen.getByText("Question q-2")).toBeInTheDocument();
+  expect(screen.getByText("题目 q-2")).toBeInTheDocument();
   expect(screen.getByText("Why is this boundary necessary?")).toBeInTheDocument();
   expect(screen.getByText("当前题")).toBeInTheDocument();
-  expect(screen.getByText("Question q-3")).toBeInTheDocument();
+  expect(screen.getByText("题目 q-3")).toBeInTheDocument();
   expect(screen.getByText("What failure scenario should be checked next?")).toBeInTheDocument();
   expect(screen.getByText("待完成")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "开始答题" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: "立即答题" })).toHaveAttribute(
     "href",
     "/projects/proj-1/stages/stage-1/questions/set-1/q-2",
   );
@@ -701,11 +703,12 @@ test("QuestionPage renders loaded question data and not the static placeholder",
   );
 
   expect(screen.getByText("Loading question...")).toBeInTheDocument();
-  expect(await screen.findByRole("heading", { name: "Question: Why is this boundary necessary?" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "闯关答题" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Why is this boundary necessary?" })).toBeInTheDocument();
   expect(screen.getByText("Check whether the user can explain the separation between read and write flows.")).toBeInTheDocument();
   expect(screen.getByText("Answer in your own words")).toBeInTheDocument();
-  expect(screen.getByText("Stage summary")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Submit answer" })).toBeInTheDocument();
+  expect(screen.getByText("项目上下文")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "提交答案" })).toBeInTheDocument();
   expect(screen.getByText("continue_answering")).toBeInTheDocument();
   expect(screen.queryByText(/Placeholder for question prompt/)).not.toBeInTheDocument();
 });
@@ -740,12 +743,12 @@ test("QuestionPage submits an answer and refreshes the stage summary", async () 
     "/projects/proj-1/stages/stage-1/questions/set-1/q-2",
   );
 
-  await screen.findByRole("heading", { name: "Question: Why is this boundary necessary?" });
+  await screen.findByRole("heading", { name: "Why is this boundary necessary?" });
   fireEvent.change(screen.getByLabelText("Answer"), { target: { value: "Need review" } });
-  fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+  fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
 
   expect(await screen.findByText("Assessment created with verdict partial.")).toBeInTheDocument();
-  expect(screen.getByText("Answer excerpt: Need review")).toBeInTheDocument();
+  expect(screen.getByText("你的回答摘要：Need review")).toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "评析解析" })).toBeInTheDocument();
   expect(screen.getByText("方向正确，但还需要补齐关键缺口")).toBeInTheDocument();
   expect(screen.getByText("部分掌握 · 68%")).toBeInTheDocument();
@@ -794,9 +797,9 @@ test("QuestionPage does not refresh question set when submit response omits that
     "/projects/proj-1/stages/stage-1/questions/set-1/q-2",
   );
 
-  await screen.findByRole("heading", { name: "Question: Why is this boundary necessary?" });
+  await screen.findByRole("heading", { name: "Why is this boundary necessary?" });
   fireEvent.change(screen.getByLabelText("Answer"), { target: { value: "Need review" } });
-  fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+  fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
 
   expect(await screen.findByText("Assessment created with verdict partial.")).toBeInTheDocument();
   await waitFor(() => expect(client.getLatestAssessmentReview).toHaveBeenCalledWith("proj-1", "stage-1"));
@@ -834,15 +837,15 @@ test("QuestionPage resets answer draft and submit state when route params change
     </ApiClientProvider>,
   );
 
-  await screen.findByRole("heading", { name: "Question: Why is this boundary necessary?" });
+  await screen.findByRole("heading", { name: "Why is this boundary necessary?" });
   fireEvent.change(screen.getByLabelText("Answer"), { target: { value: "Need review" } });
-  fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+  fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
   await screen.findByText("Assessment created with verdict partial.");
 
   fireEvent.click(screen.getByRole("link", { name: "Go to q-3" }));
 
-  expect(await screen.findByRole("heading", { name: "Question: How does this boundary generalize?" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "How does this boundary generalize?" })).toBeInTheDocument();
   await waitFor(() => expect(screen.getByLabelText("Answer")).toHaveValue(""));
   expect(screen.queryByText("Assessment created with verdict partial.")).not.toBeInTheDocument();
-  expect(screen.queryByText("Answer excerpt: Need review")).not.toBeInTheDocument();
+  expect(screen.queryByText("你的回答摘要：Need review")).not.toBeInTheDocument();
 });

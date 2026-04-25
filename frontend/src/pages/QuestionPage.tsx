@@ -129,9 +129,9 @@ export function QuestionPage() {
   return (
     <section style={{ display: "grid", gap: "1rem" }}>
       <div>
-        <h1 style={{ margin: 0 }}>Question</h1>
+        <h1 style={{ margin: 0 }}>闯关答题</h1>
         <p style={{ margin: "0.5rem 0 0", color: "#475569" }}>
-          {projectId} / {stageId} / {questionSetId} / {questionId}
+          先用自己的话回答，再看评析、考点和沉淀到知识库的内容。
         </p>
       </div>
 
@@ -147,51 +147,53 @@ export function QuestionPage() {
       ) : (
         <div style={{ display: "grid", gap: "1rem" }}>
           <article style={panelStyle}>
-            <h2 style={{ margin: "0 0 0.75rem" }}>Question: {pageState.question.prompt}</h2>
-            <p style={{ margin: 0, color: "#475569" }}>Question {pageState.question.question_id}</p>
+            <h2 style={{ margin: "0 0 0.75rem" }}>{pageState.question.prompt}</h2>
+            <p style={{ margin: 0, color: "#475569" }}>
+              题目 {pageState.question.question_id} · {projectId} / {stageId} / {questionSetId}
+            </p>
             <dl style={definitionListStyle}>
               <div>
-                <dt style={termStyle}>Level</dt>
+                <dt style={termStyle}>难度</dt>
                 <dd style={definitionStyle}>{pageState.question.question_level}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Intent</dt>
+                <dt style={termStyle}>考察意图</dt>
                 <dd style={definitionStyle}>{pageState.question.intent}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Answer placeholder</dt>
+                <dt style={termStyle}>答题提示</dt>
                 <dd style={definitionStyle}>{pageState.question.answer_placeholder}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Status</dt>
+                <dt style={termStyle}>状态</dt>
                 <dd style={definitionStyle}>{pageState.question.status}</dd>
               </div>
             </dl>
           </article>
 
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Stage summary</h2>
+            <h2 style={sectionHeadingStyle}>项目上下文</h2>
             <dl style={definitionListStyle}>
               <div>
-                <dt style={termStyle}>Stage status</dt>
+                <dt style={termStyle}>阶段状态</dt>
                 <dd style={definitionStyle}>{pageState.stage.status}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Mastery</dt>
+                <dt style={termStyle}>掌握状态</dt>
                 <dd style={definitionStyle}>{pageState.stage.mastery_status}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Active question set</dt>
+                <dt style={termStyle}>当前题集</dt>
                 <dd style={definitionStyle}>{pageState.stage.active_question_set_id ?? "none"}</dd>
               </div>
             </dl>
           </article>
 
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Submit answer</h2>
+            <h2 style={sectionHeadingStyle}>提交回答</h2>
             <form onSubmit={handleSubmit} style={{ display: "grid", gap: "0.75rem" }}>
               <label style={{ display: "grid", gap: "0.5rem" }}>
-                <span style={termStyle}>Answer</span>
+                <span style={termStyle}>你的回答</span>
                 <textarea
                   aria-label="Answer"
                   value={answerText}
@@ -203,7 +205,7 @@ export function QuestionPage() {
               </label>
               <div>
                 <button type="submit" disabled={submitState === "submitting"} style={buttonStyle}>
-                  {submitState === "submitting" ? "Submitting..." : "Submit answer"}
+                  {submitState === "submitting" ? "提交中..." : "提交答案"}
                 </button>
               </div>
             </form>
@@ -217,7 +219,7 @@ export function QuestionPage() {
                 <p style={{ margin: 0, fontWeight: 700 }}>{submitResult.message}</p>
                 {submitResult.assessment_summary ? (
                   <p style={{ margin: "0.5rem 0 0", color: "#475569" }}>
-                    Answer excerpt: {submitResult.assessment_summary.answer_excerpt}
+                    你的回答摘要：{submitResult.assessment_summary.answer_excerpt}
                   </p>
                 ) : null}
               </div>
@@ -235,7 +237,7 @@ export function QuestionPage() {
           ) : null}
 
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Allowed actions</h2>
+            <h2 style={sectionHeadingStyle}>下一步可选动作</h2>
             <ul style={listStyle}>
               {pageState.question.allowed_actions.map((action) => (
                 <li key={action}>{action}</li>

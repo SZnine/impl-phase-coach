@@ -57,9 +57,9 @@ export function QuestionSetPage() {
   return (
     <section style={{ display: "grid", gap: "1rem" }}>
       <div>
-        <h1 style={{ margin: 0 }}>Question set</h1>
+        <h1 style={{ margin: 0 }}>题目训练</h1>
         <p style={{ margin: "0.5rem 0 0", color: "#475569" }}>
-          {projectId} / {stageId} / {questionSetId}
+          今天先完成一组高质量题目，答完后会给出评析并沉淀到知识库。
         </p>
       </div>
 
@@ -75,21 +75,24 @@ export function QuestionSetPage() {
       ) : (
         <div style={{ display: "grid", gap: "1rem" }}>
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Question set: {state.data.question_set_title}</h2>
+            <h2 style={sectionHeadingStyle}>当前推荐题</h2>
+            <p style={{ margin: "0 0 0.75rem", color: "#475569" }}>
+              {state.data.question_set_title} · {projectId} / {stageId} / {questionSetId}
+            </p>
             <dl style={definitionListStyle}>
               <div>
-                <dt style={termStyle}>Status</dt>
+                <dt style={termStyle}>题集状态</dt>
                 <dd style={definitionStyle}>{state.data.status}</dd>
               </div>
               <div>
-                <dt style={termStyle}>Questions</dt>
+                <dt style={termStyle}>题目进度</dt>
                 <dd style={definitionStyle}>
                   {state.data.question_count}
                   <span style={progressLabelStyle}>已完成 {completedQuestionCount} / {totalQuestionCount}</span>
                 </dd>
               </div>
               <div>
-                <dt style={termStyle}>Current question</dt>
+                <dt style={termStyle}>当前题目</dt>
                 <dd style={definitionStyle}>{state.data.current_question_id ?? "none"}</dd>
               </div>
             </dl>
@@ -99,7 +102,7 @@ export function QuestionSetPage() {
                   to={`/projects/${projectId}/stages/${stageId}/questions/${questionSetId}/${entryQuestion.question_id}`}
                   style={buttonLinkStyle}
                 >
-                  开始答题
+                  立即答题
                 </Link>
                 <p style={{ margin: "0.5rem 0 0", color: "#475569" }}>
                   当前推荐：{entryQuestion.prompt}
@@ -109,7 +112,7 @@ export function QuestionSetPage() {
           </article>
 
           <article style={panelStyle}>
-            <h2 style={sectionHeadingStyle}>Questions</h2>
+            <h2 style={sectionHeadingStyle}>题目列表</h2>
             <ul style={listStyle}>
               {state.data.questions.map((question) => {
                 const displayStatus = getQuestionDisplayStatus(question, state.data.current_question_id);
@@ -120,7 +123,7 @@ export function QuestionSetPage() {
                       <Link
                         to={`/projects/${projectId}/stages/${stageId}/questions/${questionSetId}/${question.question_id}`}
                       >
-                        Question {question.question_id}
+                        题目 {question.question_id}
                       </Link>
                       <span style={displayStatus.style}>{displayStatus.label}</span>
                     </div>
