@@ -1,148 +1,199 @@
-# Live Graph Smoke 设计
+# Live Graph Smoke Design
 
-> 本文定义一条 opt-in 的真实 LLM graph smoke。目标不是把 live provider 纳入默认测试，而是用用户本地配置的 evaluator provider 跑通一次真实 submit，并验证新 Graph Layer 能从真实评估输出进入 `graph-revision` 和 `graph-main`。
+> This spec defines the opt-in live LLM smoke for proving that real agent output can flow into the graph read surfaces. It is intentionally not part of default `pytest`, because it depends on the local provider configuration and network access.
 
-## 1. 当前定位
+## 1. Current Position
 
-当前后端主链已经在 fake assessment 下闭环：
+The original live graph smoke only needed to prove:
 
 ```text
 submit-answer
-  -> Evaluator assessment
-  -> EvaluationBatch / EvaluationItem
-  -> AssessmentFactBatch / AssessmentFactItem
-  -> KnowledgeSignal
-  -> GraphRevision / KnowledgeNode / KnowledgeRelation
-  -> /api/knowledge/graph-revision
-  -> /api/knowledge/graph-main
+  -> Evaluator Agent assessment
+  -> facts / signals
+  -> graph revision
+  -> graph-main read surface
 ```
 
-但还没有证明真实 LLM 输出能稳定穿过这条链路。下一步应补一条人工触发的 live smoke，而不是继续局部增强 graph DTO。
-
-## 2. 目标
-
-新增一条命令行入口，使用 `.env/api_key.md` 或 `key/api_key.md` 中的 evaluator provider 配置，执行：
-
-1. 创建临时 SQLite workspace。
-2. 使用 live `EvaluatorAgentAssessmentClient`。
-3. 通过 HTTP API 提交一条固定答案。
-4. 读取 `/api/knowledge/graph-revision`。
-5. 读取 `/api/knowledge/graph-main`。
-6. 输出可审查 artifact。
-
-## 3. 非目标
-
-本阶段不做：
-
-1. 不把 live smoke 放进默认 `pytest`。
-2. 不读取或打印 API key。
-3. 不默认使用 Project Agent live 出题。
-4. 不新增 graph schema。
-5. 不要求每次 live smoke 都产生 relation。
-6. 不把 live smoke 结果作为确定性质量门禁。
-
-## 4. 命令入口
-
-新增脚本：
+The project has since moved one step closer to real product usage. The stronger smoke now exercises the full learning loop:
 
 ```text
-scripts/run_live_graph_smoke.py
+Project Agent generates questions
+  -> durable question checkpoint
+  -> user submits an answer
+  -> Evaluator Agent returns assessment review
+  -> facts / signals / graph revision
+  -> graph-main read surface
+  -> question set progress updates
 ```
 
-建议参数：
+This does not replace deterministic tests. It gives an inspectable real-run artifact so we can judge whether the workflow is usable with actual LLM output.
+
+## 2. Goal
+
+The live smoke should answer three questions:
+
+1. Can the Project Agent generate readable, project-grounded questions?
+2. Can the Evaluator Agent produce a readable assessment summary from a submitted answer?
+3. Can the resulting facts and signals enter the graph read model without breaking question progress?
+
+The minimum successful run must produce:
+
+1. at least one generated question;
+2. at least one answered question in the question set read surface;
+3. an assessment review with a readable summary;
+4. an active graph revision with at least one node;
+5. a graph-main response with a selected cluster.
+
+Relations are quality signals, not a default hard requirement. `--strict` may make missing relations fail.
+
+## 3. Non-Goals
+
+This stage does not:
+
+1. put live provider calls into default tests;
+2. print API keys, provider headers, or raw provider configuration;
+3. require every live run to produce graph relations;
+4. tune the UI layout;
+5. expand graph schema;
+6. treat one live success as proof of product quality.
+
+The smoke is a regression and observability tool. Product quality still needs repeated real usage.
+
+## 4. Command Entry
+
+The current full workflow smoke entry is:
+
+```powershell
+python scripts/run_full_live_workflow_smoke.py --max-questions 2
+```
+
+Useful options:
 
 ```text
 --root-dir
 --model
+--project-model
+--evaluator-model
+--max-questions
 --output-dir
 --strict
 ```
 
-默认：
+Defaults:
 
-1. `root-dir` 为仓库根目录。
-2. `model` 为 `gpt-5.4-mini`。
-3. `output-dir` 为 `artifacts/live-graph-smoke`。
-4. `strict` 关闭；仅在结构缺失时返回非零。
+1. `root-dir` is the repository root.
+2. `model` is `gpt-5.4-mini`.
+3. `output-dir` is `artifacts/full-live-workflow-smoke`.
+4. `strict` is off.
 
-## 5. 输入样例
+The script reads OpenAI-compatible provider config from `.env/api_key.md` or `key/api_key.md`, but it must never echo secrets into artifacts or logs.
 
-提交的答案应刻意包含一个真实弱点，并给 evaluator 足够上下文让它可能产生 `support_basis_tags`：
+## 5. Generation Request Quality
 
-```text
-I can describe that the API boundary exists, but I did not define the request/response contract, persistence boundary, or malformed provider-output regression clearly.
-```
-
-该答案目标是触发：
-
-1. `partial` 或 `weak` verdict。
-2. 至少一个 `core_gaps`。
-3. 至少一个 assessment fact。
-4. 至少一个 graph node。
-5. 如果 evaluator 输出 support basis，则产生 relation。
-
-## 6. 输出 artifact
-
-每次运行输出一个 JSON 文件和一个 Markdown 摘要：
+The generation request must carry learning-oriented context, not only engineering-stage fields:
 
 ```text
-artifacts/live-graph-smoke/YYYYMMDD-HHMMSS.json
-artifacts/live-graph-smoke/YYYYMMDD-HHMMSS.md
+learning_goal: practice realistic project questions, interview fundamentals, and misconception diagnosis
+target_user_level: intermediate
+question_mix:
+  - project implementation
+  - interview fundamentals
+  - mistake diagnosis
+  - failure scenario
+preferred_question_style: concrete study-app question list with direct prompts and reviewable answers
 ```
 
-JSON 包含：
+This keeps Project Agent output closer to a real study workflow instead of abstract architecture discussion.
 
-1. submit response。
-2. graph revision response。
-3. graph main response。
-4. derived checks。
-5. artifact db path。
+## 6. Issue Classification
 
-Markdown 包含：
+The smoke currently classifies these hard issues:
 
-1. verdict / confidence。
-2. graph node count。
-3. relation count。
-4. selected cluster summary。
-5. issues list。
+1. `missing_generated_questions`
+2. `missing_readable_generated_question_prompt`
+3. `submit_failed`
+4. `missing_question_set_refresh_target`
+5. `missing_assessment_review`
+6. `missing_readable_assessment_review_summary`
+7. `missing_answered_question_progress`
+8. `missing_active_graph_revision`
+9. `missing_graph_nodes`
+10. `missing_graph_main_nodes`
+11. `missing_selected_cluster`
+12. `missing_relation_in_strict_mode`
 
-不得包含 API key、完整 provider request header、Authorization 或原始配置文件内容。
+The content quality gates are deliberately simple:
 
-## 7. 检查规则
+1. at least one generated question prompt must be readable;
+2. the assessment review summary must be readable.
 
-必过检查：
+These gates catch obvious provider drift without pretending to fully grade question quality.
 
-1. submit response `success == true`。
-2. `graph_revision.has_active_revision == true`。
-3. `graph_revision.revision.node_count >= 1`。
-4. `graph_main.nodes` 非空。
-5. `graph_main.selected_cluster != null`。
+## 7. Artifact Shape
 
-观察性检查，不作为默认失败：
+Each run writes:
 
-1. `relation_count >= 1`。
-2. graph-main relation preview 非空。
-3. evaluator 输出 support basis。
+```text
+artifacts/full-live-workflow-smoke/YYYYMMDD-HHMMSS.json
+artifacts/full-live-workflow-smoke/YYYYMMDD-HHMMSS.md
+```
 
-如果 `--strict` 开启，则 relation 缺失也视为失败。
+The JSON artifact includes:
 
-## 8. 测试边界
+1. generation response;
+2. selected question id;
+3. submit response;
+4. assessment review;
+5. question set read surface after submit;
+6. graph revision;
+7. graph-main response;
+8. issue list;
+9. model names and artifact DB path.
 
-默认单元测试只验证脚本内部的纯函数：
+The Markdown report must be readable without opening JSON. It includes:
 
-1. issue classification。
-2. report formatting。
-3. artifact payload 不包含敏感字段。
+1. generated question count;
+2. selected question id;
+3. generated question prompts and intents;
+4. answered question count and current question id;
+5. assessment review title and summary;
+6. graph node and relation counts;
+7. selected cluster summary;
+8. issues.
 
-不在默认测试中访问真实网络。
+## 8. Verification Boundary
 
-## 9. 成功标准
+Default deterministic tests cover helper behavior only:
 
-本阶段完成后，应满足：
+```powershell
+python -m pytest tests/test_full_live_workflow_smoke.py -q
+```
 
-1. 开发者可以显式运行 live graph smoke。
-2. 默认 test suite 不依赖网络。
-3. live smoke 能产出可审查 artifact。
-4. live smoke 能证明真实 evaluator 输出至少可进入 graph node 和 selected cluster。
-5. relation 是否产生被记录为质量信号，而不是硬编码假设。
+The full test suite remains network-free:
 
+```powershell
+python -m pytest -q
+```
+
+Manual live verification is explicit:
+
+```powershell
+python scripts/run_full_live_workflow_smoke.py --max-questions 2
+```
+
+## 9. Latest Checkpoint
+
+The current checkpoint has been verified with:
+
+1. `python -m pytest tests/test_full_live_workflow_smoke.py -q`: 11 passed.
+2. `python -m pytest -q`: 249 passed.
+3. `python scripts/run_full_live_workflow_smoke.py --max-questions 2`: issues none.
+
+Latest successful live artifact example:
+
+```text
+artifacts/full-live-workflow-smoke/20260425-072953.json
+artifacts/full-live-workflow-smoke/20260425-072953.md
+```
+
+The observed live run generated readable questions, produced a readable assessment summary, marked one question as answered, and produced a graph revision plus selected cluster.
